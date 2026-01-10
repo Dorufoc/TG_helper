@@ -65,8 +65,48 @@ def parse_html_to_json(file_path):
                     textarea = textareas[0]
         
         if textarea:
+            # 根据textarea的属性判断是填空题、简答题还是释义题
             question['type'] = '填空题'
-            # 填空题的正确答案在textarea的内容中
+            
+            # 检查textarea的高度或行数属性，判断是否为简答题或释义题
+            rows = textarea.get('rows', '')
+            style = textarea.get('style', '')
+            
+            # 检查题目内容中是否包含释义题相关关键词
+            content = question.get('content', '')
+            is_paraphrase = False
+            if content:
+                # 检查题目内容中是否包含释义相关关键词
+                paraphrase_keywords = ['解释', '释义', '说明', '什么是', '简述']
+                for keyword in paraphrase_keywords:
+                    if keyword in content:
+                        is_paraphrase = True
+                        break
+            
+            # 检查textarea的属性
+            if rows:
+                try:
+                    if int(rows) > 1:
+                        if is_paraphrase:
+                            question['type'] = '释义题'
+                        else:
+                            question['type'] = '简答题'
+                except ValueError:
+                    pass
+            elif 'height' in style:
+                # 简单解析style中的height属性
+                height_match = re.search(r'height:\s*(\d+)px', style)
+                if height_match:
+                    try:
+                        if int(height_match.group(1)) > 50:
+                            if is_paraphrase:
+                                question['type'] = '释义题'
+                            else:
+                                question['type'] = '简答题'
+                    except ValueError:
+                        pass
+            
+            # 填空题、简答题和释义题的正确答案都在textarea的内容中
             value = textarea.text.strip() or textarea.string.strip() if textarea.string else ''
             # 检查是否有多个答案（用分号或逗号分隔）
             if value:

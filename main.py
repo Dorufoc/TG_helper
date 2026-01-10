@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (
     QLabel, QPushButton, QLineEdit, QSlider, QProgressBar,
     QRadioButton, QCheckBox, QGroupBox, QMessageBox,
     QGridLayout, QFileDialog, QFrame, QScrollArea, QMenu,
-    QSizePolicy, QButtonGroup
+    QSizePolicy, QButtonGroup, QTextEdit
 )
 from PyQt5.QtCore import Qt, QSize, QEvent
 from PyQt5.QtGui import QFont, QPalette, QColor
@@ -46,6 +46,19 @@ class QuestionManager:
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 self.questions = json.load(f)
+            
+            # 自动识别选择题类型：根据正确答案数量将"选择题"转换为"单选题"或"多选题"
+            for question in self.questions:
+                if question.get('type') == '选择题':
+                    correct_answers = question.get('correct_answer', [])
+                    # 过滤掉空答案
+                    correct_answers = [ans for ans in correct_answers if ans.strip()]
+                    
+                    if len(correct_answers) > 1:
+                        question['type'] = '多选题'
+                    else:
+                        question['type'] = '单选题'
+            
             self.current_file = file_path
             self._calculate_stats()
             return True
@@ -107,17 +120,30 @@ class QuestionManager:
         self.viewed_answers = {}
         self.current_question_index = 0
         
-        # 定义题型顺序
-        type_order = ['单选题', '多选题', '判断题', '填空题']
+        # 定义优先题型顺序
+        type_order = ['单选题', '多选题', '判断题', '填空题', '简答题', '释义题']
         
-        # 从各题型中随机抽取题目，按题型顺序添加到列表
+        # 处理优先顺序中的题型
+        processed_types = set()
         for q_type in type_order:
             if q_type in type_counts and type_counts[q_type] > 0:
                 # 筛选出该题型的所有题目
                 type_questions = [q for q in self.questions if q['type'] == q_type]
+                
                 # 随机抽取指定数量的题目
                 selected = random.sample(type_questions, min(type_counts[q_type], len(type_questions)))
                 self.selected_questions.extend(selected)
+                processed_types.add(q_type)
+        
+        # 处理剩余的其他题型（不在优先顺序列表中但用户选择了的题型）
+        for q_type in type_counts:
+            if q_type not in processed_types and type_counts[q_type] > 0:
+                # 筛选出该题型的所有题目
+                type_questions = [q for q in self.questions if q['type'] == q_type]
+                if type_questions:
+                    # 随机抽取指定数量的题目
+                    selected = random.sample(type_questions, min(type_counts[q_type], len(type_questions)))
+                    self.selected_questions.extend(selected)
         
         return self.selected_questions
     
@@ -152,9 +178,9 @@ class QuestionManager:
             
             # 根据题型检查答案是否正确
             is_correct = False
-            if question['type'] in ['单选题', '判断题', '多选题']:
+            if question['type'] in ['单选题', '判断题', '多选题', '选择题']:
                 is_correct = set(user_answer) == set(correct_answer)
-            elif question['type'] == '填空题':
+            elif question['type'] in ['填空题', '简答题', '释义题']:
                 if len(user_answer) == len(correct_answer):
                     is_all_correct = True
                     for ua, ca in zip(user_answer, correct_answer):
@@ -254,6 +280,11 @@ class ConfigWindow(QWidget):
             self.deepseek_button.setToolTip("DeepSeek解析模块不可用")
         self.main_layout.addWidget(self.deepseek_button)
         
+        # 添加背题模式复选框
+        self.study_mode_check = QCheckBox("背题模式")
+        self.study_mode_check.setToolTip("开启后，所有题目直接显示答案和解析，不计分")
+        self.main_layout.addWidget(self.study_mode_check)
+        
         # 开始答题按钮
         self.start_button = QPushButton("开始答题")
         self.start_button.clicked.connect(self.start_exam)
@@ -262,27 +293,71 @@ class ConfigWindow(QWidget):
         # 设置布局
         self.setLayout(self.main_layout)
     
+    def _get_all_json_files(self, start_dir='.'):
+        """递归获取指定目录及其子目录下的所有JSON文件"""
+        json_files = []
+        for root, dirs, files in os.walk(start_dir):
+            # 过滤掉隐藏目录
+            dirs[:] = [d for d in dirs if not d.startswith('.')]
+            for file in files:
+                if file.endswith('.json'):
+                    # 获取相对路径
+                    relative_path = os.path.relpath(os.path.join(root, file), start_dir)
+                    json_files.append(relative_path)
+        return json_files
+    
     def show_file_menu(self):
         """显示题库文件选择菜单"""
-        # 获取当前目录下的所有JSON文件
-        json_files = [f for f in os.listdir('.') if f.endswith('.json')]
+        # 获取当前目录及其子目录下的所有JSON文件
+        json_files = self._get_all_json_files('.')
         
         # 创建菜单
         menu = QMenu(self)
         
-        # 添加默认题库选项
-        default_action = menu.addAction("questions.json")
-        default_action.triggered.connect(lambda: self.load_question_file("questions.json"))
+        # 添加默认题库选项（如果存在）
+        if 'questions.json' in json_files:
+            default_action = menu.addAction("questions.json")
+            default_action.triggered.connect(lambda: self.load_question_file("questions.json"))
+            json_files.remove('questions.json')
         
-        # 添加错题集选项
-        if len(json_files) > 1:
+        # 按目录结构组织其他JSON文件
+        if json_files:
             menu.addSeparator()
-            wrong_questions_menu = QMenu("错题集", menu)
-            for file in json_files:
-                if file != "questions.json":
-                    action = wrong_questions_menu.addAction(file)
-                    action.triggered.connect(lambda checked, f=file: self.load_question_file(f))
-            menu.addMenu(wrong_questions_menu)
+            
+            # 创建目录结构字典
+            dir_structure = {}
+            
+            for file_path in json_files:
+                # 拆分路径
+                parts = file_path.split(os.sep)
+                if len(parts) == 1:
+                    # 根目录下的文件
+                    action = menu.addAction(file_path)
+                    action.triggered.connect(lambda checked, f=file_path: self.load_question_file(f))
+                else:
+                    # 子目录下的文件
+                    current = dir_structure
+                    for part in parts[:-1]:
+                        if part not in current:
+                            current[part] = {}
+                        current = current[part]
+                    current[parts[-1]] = None
+            
+            # 递归创建子菜单
+            def create_submenu(parent_menu, current_dir, path_parts):
+                for name, content in current_dir.items():
+                    full_path = os.path.join(*(path_parts + [name]))
+                    if isinstance(content, dict):
+                        # 创建子菜单
+                        submenu = QMenu(name, parent_menu)
+                        create_submenu(submenu, content, path_parts + [name])
+                        parent_menu.addMenu(submenu)
+                    else:
+                        # 创建菜单项
+                        action = parent_menu.addAction(name)
+                        action.triggered.connect(lambda checked, f=full_path: self.load_question_file(f))
+            
+            create_submenu(menu, dir_structure, [])
         
         # 显示菜单
         menu.exec_(self.file_combo.mapToGlobal(self.file_combo.rect().bottomLeft()))
@@ -354,6 +429,11 @@ class ConfigWindow(QWidget):
             self.type_count_inputs[q_type] = count_input
             self.type_layouts.append(count_layout)
         
+        # 添加背题模式复选框
+        self.study_mode_check = QCheckBox("背题模式")
+        self.study_mode_check.setToolTip("开启后，所有题目直接显示答案和解析，不计分")
+        self.main_layout.addWidget(self.study_mode_check)
+        
         # 重新添加开始答题按钮
         self.start_button = QPushButton("开始答题")
         self.start_button.clicked.connect(self.start_exam)
@@ -400,7 +480,7 @@ class ConfigWindow(QWidget):
                 return
             
             # 打开答题界面
-            self.exam_window = ExamWindow(self.question_manager)
+            self.exam_window = ExamWindow(self.question_manager, study_mode=self.study_mode_check.isChecked())
             self.exam_window.show()
             self.hide()
             
@@ -411,10 +491,13 @@ class ConfigWindow(QWidget):
 class ExamWindow(QWidget):
     """答题主界面"""
     
-    def __init__(self, question_manager):
+    def __init__(self, question_manager, study_mode=False):
         super().__init__()
         self.question_manager = question_manager
+        self.study_mode = study_mode  # 背题模式状态
         self.setWindowTitle("答题界面")
+        if study_mode:
+            self.setWindowTitle("答题界面 - 背题模式")
         self.setGeometry(100, 100, 1000, 600)
         # 设置焦点策略，确保窗口能接收键盘事件
         self.setFocusPolicy(Qt.StrongFocus)
@@ -572,7 +655,7 @@ class ExamWindow(QWidget):
         questions = self.question_manager.selected_questions
         
         # 定义题型顺序
-        type_order = ['单选题', '多选题', '判断题', '填空题']
+        type_order = ['单选题', '多选题', '判断题', '填空题', '简答题', '释义题']
         
         # 创建题型分组，按分题型后的顺序计算序号
         current_number = 1
@@ -694,10 +777,51 @@ class ExamWindow(QWidget):
         self.option_widgets = []
         # 为单选题创建按钮组，确保同一时间只能选择一个选项
         self.button_group = None
+        
+        # 处理单选题和判断题（使用单选按钮）
         if question['type'] in ['单选题', '判断题']:
             self.button_group = QButtonGroup()
-        
-        if question['type'] == '填空题':
+            # 处理单选题、判断题的选项
+            for i, option in enumerate(question['options']):
+                option_button = QRadioButton(option)
+                option_button.setStyleSheet(f"font-size: {self.current_font_size}px;")
+                self.options_layout.addWidget(option_button)
+                self.option_widgets.append(option_button)
+                
+                # 将按钮添加到按钮组，确保同一时间只能选择一个选项
+                if self.button_group:
+                    self.button_group.addButton(option_button, i)
+                
+                # 恢复用户之前的答案
+                user_answer = self.question_manager.get_user_answer(index)
+                if user_answer:
+                    try:
+                        selected_index = int(user_answer)
+                        if selected_index == i:
+                            option_button.setChecked(True)
+                    except ValueError:
+                        pass
+                
+                # 连接选项选择事件
+                option_button.clicked.connect(lambda checked, idx=i: self._save_current_answer(idx))
+            
+        elif question['type'] in ['多选题']:
+            # 处理多选题的选项
+            for i, option in enumerate(question['options']):
+                option_button = QCheckBox(option)
+                option_button.setStyleSheet(f"font-size: {self.current_font_size}px;")
+                self.options_layout.addWidget(option_button)
+                self.option_widgets.append(option_button)
+                
+                # 恢复用户之前的答案
+                user_answer = self.question_manager.get_user_answer(index)
+                if user_answer and str(i) in user_answer:
+                    option_button.setChecked(True)
+                
+                # 连接选项选择事件
+                option_button.clicked.connect(lambda checked, idx=i: self._save_current_answer(idx))
+            
+        elif question['type'] in ['填空题', '简答题', '释义题']:
             # 准备存储多个输入框和答案标签
             self.fill_inputs = []
             self.correct_answer_labels = []
@@ -714,9 +838,17 @@ class ExamWindow(QWidget):
             
             # 创建输入框
             for i in range(input_count):
-                # 输入框
-                fill_input = QLineEdit()
-                fill_input.setPlaceholderText(f"请输入第{i+1}个空的答案")
+                if question['type'] == '填空题':
+                    # 填空题使用单行文本框
+                    fill_input = QLineEdit()
+                    fill_input.setPlaceholderText(f"请输入第{i+1}个空的答案")
+                else:
+                    # 简答题和释义题使用多行文本框
+                    fill_input = QTextEdit()
+                    fill_input.setPlaceholderText(f"请输入第{i+1}题的答案")
+                    fill_input.setFixedHeight(100)  # 设置多行文本框高度
+                    fill_input.setLineWrapMode(QTextEdit.WidgetWidth)  # 设置自动换行
+                
                 fill_input.setStyleSheet(f"font-size: {self.current_font_size}px;")
                 if i < len(user_answers):
                     fill_input.setText(user_answers[i])
@@ -727,8 +859,12 @@ class ExamWindow(QWidget):
                 correct_label.setStyleSheet(f"font-size: {self.current_font_size}px;")
                 
                 # 实时保存答案，失去焦点时也保存
-                fill_input.textChanged.connect(self._save_current_answer)
-                fill_input.editingFinished.connect(self._save_current_answer)
+                if question['type'] == '填空题':
+                    fill_input.textChanged.connect(self._save_current_answer)
+                    fill_input.editingFinished.connect(self._save_current_answer)
+                else:
+                    # 简答题和释义题使用textChanged事件实时保存，不使用focusOutEvent以避免PyQt5内部错误
+                    fill_input.textChanged.connect(self._save_current_answer)
                 
                 self.options_layout.addWidget(fill_input)
                 self.options_layout.addWidget(correct_label)
@@ -742,87 +878,48 @@ class ExamWindow(QWidget):
             if self.question_manager.is_answer_viewed(index):
                 self._show_correct_answer()
         else:
-            # 选择题/判断题使用单选/复选框
-            options = question['options']
-            original_options = options.copy()
-            correct_answers = question['correct_answer']
+            # 默认处理：对于未知类型的题目，显示文本输入框
+            # 准备存储输入框和答案标签
+            self.fill_inputs = []
+            self.correct_answer_labels = []
             
-            # 打乱选项顺序（仅针对单选题和多选题）
-            if question['type'] in ['单选题', '多选题']:
-                import random
-                random.shuffle(options)
+            # 默认1个输入框
+            input_count = 1
             
-            # 处理选项标识
-            option_letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']
+            # 恢复用户之前的答案
+            user_answers = self.question_manager.get_user_answer(index)
+            if not user_answers:
+                user_answers = ['']
             
-            for i, option in enumerate(options):
-                # 检查选项开头是否有ABCD等标识
-                original_text = option
-                processed_text = option
-                
-                # 替换选项开头的ABCD标识
-                import re
-                # 匹配选项开头的字母标识（A. 或A：等格式）
-                match = re.match(r'^([A-Za-z])[.:、]\s*', processed_text)
-                if match:
-                    # 替换为新的字母标识
-                    new_letter = option_letters[i]
-                    processed_text = re.sub(r'^[A-Za-z][.:、]\s*', f'{new_letter}. ', processed_text)
-                
-                # 创建包含自动换行文本的选项
-                from PyQt5.QtWidgets import QHBoxLayout
-                
-                # 创建选项容器
-                option_container = QWidget()
-                option_layout = QHBoxLayout(option_container)
-                option_layout.setContentsMargins(0, 0, 0, 5)
-                option_layout.setSpacing(5)
-                option_layout.setAlignment(Qt.AlignTop)  # 容器向上对齐
-                
-                # 创建单选/复选框，并直接设置文本
-                if question['type'] in ['单选题', '判断题']:
-                    checkbox = QRadioButton(processed_text)
-                    # 将单选按钮添加到按钮组中，确保同一时间只能选择一个选项
-                    if self.button_group:
-                        self.button_group.addButton(checkbox)
-                else:  # 多选题
-                    checkbox = QCheckBox(processed_text)
-                
-                # 设置复选框的样式和属性
-                checkbox.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)  # 自适应宽度，高度根据内容调整
-                checkbox.setStyleSheet(f"font-size: {self.current_font_size}px;")
-                
-                # 将复选框添加到布局中
-                option_layout.addWidget(checkbox, 1)  # 复选框占主要空间
-                
-                # 恢复用户之前的选择
-                user_answer = self.question_manager.get_user_answer(index)
-                # 查找用户之前选择的选项在打乱后的列表中的位置
-                for original_option in original_options:
-                    if original_option in user_answer:
-                        # 找到原始选项在打乱后的列表中的位置
-                        if original_option == option:
-                            checkbox.setChecked(True)
-                            break
-                
-                # 如果答案已查看，高亮显示
-                if self.question_manager.is_answer_viewed(index):
-                    # 直接检查当前选项是否为正确答案
-                    is_correct = option in correct_answers
-                    if is_correct:
-                        checkbox.setStyleSheet(f"color: green; font-size: {self.current_font_size}px;")
-                    else:
-                        checkbox.setStyleSheet(f"color: red; font-size: {self.current_font_size}px;")
-                
-                # 实时保存答案
-                def save_answer(checked):
-                    self._save_current_answer()
-                checkbox.toggled.connect(save_answer)
-                
-                self.options_layout.addWidget(option_container)
-                # 保存选项相关组件，用于后续处理
-                self.option_widgets.append(checkbox)
-                self.option_widgets.append(option_container)
+            # 创建输入框
+            fill_input = QTextEdit()
+            fill_input.setPlaceholderText(f"请输入答案...")
+            fill_input.setFixedHeight(100)
+            fill_input.setStyleSheet(f"font-size: {self.current_font_size}px;")
+            
+            # 设置初始文本
+            if user_answers:
+                fill_input.setPlainText(user_answers[0])
+            
+            # 用于显示正确答案的标签
+            correct_label = QLabel()
+            correct_label.setVisible(False)
+            correct_label.setStyleSheet(f"font-size: {self.current_font_size}px;")
+            
+            # 实时保存答案
+            fill_input.textChanged.connect(self._save_current_answer)
+            
+            self.options_layout.addWidget(fill_input)
+            self.options_layout.addWidget(correct_label)
+            
+            self.fill_inputs.append(fill_input)
+            self.correct_answer_labels.append(correct_label)
+            self.option_widgets.append(fill_input)
+            self.option_widgets.append(correct_label)
+            
+            # 如果答案已查看，显示正确答案
+            if self.question_manager.is_answer_viewed(index):
+                self._show_correct_answer()
         
         # 设置选项容器布局的对齐方式为向上对齐
         self.options_layout.setAlignment(Qt.AlignTop)
@@ -836,15 +933,24 @@ class ExamWindow(QWidget):
         
         # 确保所有控件都应用了当前的字体大小
         self.update_all_fonts()
+        
+        # 如果是背题模式，自动显示答案和解析
+        if self.study_mode:
+            self.view_answer()
     
     def _save_current_answer(self):
         """保存当前题目的答案"""
         index = self.question_manager.current_question_index
         question = self.question_manager.get_current_question()
         
-        if question['type'] == '填空题':
-            # 填空题
-            user_answers = [input.text().strip() for input in self.fill_inputs]
+        if question['type'] in ['填空题', '简答题', '释义题']:
+            # 填空题、简答题和释义题
+            user_answers = []
+            for input_widget in self.fill_inputs:
+                if isinstance(input_widget, QLineEdit):
+                    user_answers.append(input_widget.text().strip())
+                elif isinstance(input_widget, QTextEdit):
+                    user_answers.append(input_widget.toPlainText().strip())
             self.question_manager.save_user_answer(index, user_answers)
         else:
             # 选择题/判断题
@@ -945,7 +1051,7 @@ class ExamWindow(QWidget):
         widget.setPalette(palette)
     
     def _show_correct_answer(self):
-        """显示填空题的正确答案"""
+        """显示填空题或简答题的正确答案"""
         index = self.question_manager.current_question_index
         question = self.question_manager.get_current_question()
         correct_answers = question['correct_answer']
@@ -968,12 +1074,22 @@ class ExamWindow(QWidget):
                 
                 # 设置用户输入框的样式
                 if is_correct:
-                    fill_input.setStyleSheet("background-color: lightgreen;")
+                    if question['type'] == '填空题':
+                        fill_input.setStyleSheet("background-color: lightgreen; font-size: {self.current_font_size}px;".format(self=self))
+                    else:
+                        fill_input.setStyleSheet("background-color: lightgreen; font-size: {self.current_font_size}px;".format(self=self))
                 else:
-                    fill_input.setStyleSheet("background-color: lightcoral;")
+                    if question['type'] == '填空题':
+                        fill_input.setStyleSheet("background-color: lightcoral; font-size: {self.current_font_size}px;".format(self=self))
+                    else:
+                        fill_input.setStyleSheet("background-color: lightcoral; font-size: {self.current_font_size}px;".format(self=self))
                 
                 # 显示正确答案
-                correct_label.setText(f"正确答案 {i+1}: {correct_text}")
+                if question['type'] == '填空题':
+                    correct_label.setText(f"正确答案 {i+1}: {correct_text}")
+                else:
+                    # 简答题和释义题显示参考答案
+                    correct_label.setText(f"参考答案: {correct_text}")
                 correct_label.setStyleSheet("color: green; font-weight: bold;")
             else:
                 # 如果没有正确答案，显示提示
@@ -1002,6 +1118,11 @@ class ExamWindow(QWidget):
     
     def _check_submit_enabled(self):
         """检查是否可以提交"""
+        # 如果是背题模式，禁用提交按钮
+        if self.study_mode:
+            self.submit_button.setEnabled(False)
+            return
+            
         questions = self.question_manager.selected_questions
         total = len(questions)
         answered = 0
@@ -1024,7 +1145,7 @@ class ExamWindow(QWidget):
         # 先标记答案已查看
         self.question_manager.mark_answer_viewed(index)
         
-        if question['type'] == '填空题':
+        if question['type'] in ['填空题', '简答题', '释义题']:
             self._show_correct_answer()
         else:
             # 选择题/判断题直接高亮显示答案，不重新加载题目
@@ -1103,9 +1224,19 @@ class ExamWindow(QWidget):
                         widget.setStyleSheet(f"color: {color}; font-size: {self.current_font_size}px;")
                 else:
                     widget.setStyleSheet(f"font-size: {self.current_font_size}px;")
-            elif isinstance(widget, QLineEdit):
-                # 更新填空题输入框的字体大小
-                widget.setStyleSheet(f"font-size: {self.current_font_size}px;")
+            elif isinstance(widget, (QLineEdit, QTextEdit)):
+                # 更新填空题和简答题输入框的字体大小
+                # 保持原有的背景色样式，只更新字体大小
+                current_style = widget.styleSheet()
+                if "background-color" in current_style:
+                    # 提取背景色样式
+                    import re
+                    bg_match = re.search(r"background-color: ([^;]+);", current_style)
+                    if bg_match:
+                        bg_color = bg_match.group(1)
+                        widget.setStyleSheet(f"background-color: {bg_color}; font-size: {self.current_font_size}px;")
+                else:
+                    widget.setStyleSheet(f"font-size: {self.current_font_size}px;")
         
         # 更新所有按钮的字体大小
         for button in [self.prev_button, self.next_button, self.answer_button, self.submit_button]:
@@ -1156,8 +1287,8 @@ class ExamWindow(QWidget):
                 # 多选题
                 if set(user_answer) == set(correct_answer):
                     correct_count += 1
-            elif question['type'] == '填空题':
-                # 填空题
+            elif question['type'] in ['填空题', '简答题', '释义题']:
+                # 填空题、简答题和释义题
                 if len(user_answer) == len(correct_answer):
                     is_all_correct = True
                     for ua, ca in zip(user_answer, correct_answer):
