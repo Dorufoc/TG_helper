@@ -2,3 +2,7 @@ CAFUC
 cafuc*
 questions.json
 __pycache__
+test_*
+check_*
+wrong_*/
+logs/

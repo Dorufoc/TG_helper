@@ -179,7 +179,22 @@ class QuestionManager:
             # 根据题型检查答案是否正确
             is_correct = False
             if question['type'] in ['单选题', '判断题', '多选题', '选择题']:
-                is_correct = set(user_answer) == set(correct_answer)
+                # 检查正确答案是否为仅选项字母格式
+                is_letter_format = False
+                import re
+                
+                if correct_answer:
+                    first_answer = correct_answer[0]
+                    # 检查第一个正确答案是否仅包含一个字母
+                    if re.match(r'^[A-Za-z]$', first_answer):
+                        is_letter_format = True
+                
+                if is_letter_format:
+                    # 如果是字母格式，直接比较字母集合
+                    is_correct = set(user_answer) == set(correct_answer)
+                else:
+                    # 如果是完整文本格式，比较文本集合
+                    is_correct = set(user_answer) == set(correct_answer)
             elif question['type'] in ['填空题', '简答题', '释义题']:
                 if len(user_answer) == len(correct_answer):
                     is_all_correct = True
@@ -774,7 +789,10 @@ class ExamWindow(QWidget):
             delattr(self, 'analysis_label')
         
         # 根据题型生成选项控件
+        # 重置所有控件列表
         self.option_widgets = []
+        self.fill_inputs = []
+        self.correct_answer_labels = []
         # 为单选题创建按钮组，确保同一时间只能选择一个选项
         self.button_group = None
         
@@ -795,15 +813,12 @@ class ExamWindow(QWidget):
                 # 恢复用户之前的答案
                 user_answer = self.question_manager.get_user_answer(index)
                 if user_answer:
-                    try:
-                        selected_index = int(user_answer)
-                        if selected_index == i:
-                            option_button.setChecked(True)
-                    except ValueError:
-                        pass
+                    # 检查当前选项是否在用户答案列表中
+                    if option in user_answer:
+                        option_button.setChecked(True)
                 
                 # 连接选项选择事件
-                option_button.clicked.connect(lambda checked, idx=i: self._save_current_answer(idx))
+                option_button.clicked.connect(lambda checked: self._save_current_answer())
             
         elif question['type'] in ['多选题']:
             # 处理多选题的选项
@@ -815,17 +830,15 @@ class ExamWindow(QWidget):
                 
                 # 恢复用户之前的答案
                 user_answer = self.question_manager.get_user_answer(index)
-                if user_answer and str(i) in user_answer:
-                    option_button.setChecked(True)
+                if user_answer:
+                    # 检查当前选项是否在用户答案列表中
+                    if option in user_answer:
+                        option_button.setChecked(True)
                 
                 # 连接选项选择事件
-                option_button.clicked.connect(lambda checked, idx=i: self._save_current_answer(idx))
+                option_button.clicked.connect(lambda checked: self._save_current_answer())
             
         elif question['type'] in ['填空题', '简答题', '释义题']:
-            # 准备存储多个输入框和答案标签
-            self.fill_inputs = []
-            self.correct_answer_labels = []
-            
             # 获取正确答案数量，确定需要的输入框数量
             correct_answers = question['correct_answer']
             # 如果没有正确答案，默认1个输入框
@@ -871,8 +884,6 @@ class ExamWindow(QWidget):
                 
                 self.fill_inputs.append(fill_input)
                 self.correct_answer_labels.append(correct_label)
-                self.option_widgets.append(fill_input)
-                self.option_widgets.append(correct_label)
             
             # 如果答案已查看，显示正确答案
             if self.question_manager.is_answer_viewed(index):
@@ -955,28 +966,33 @@ class ExamWindow(QWidget):
         else:
             # 选择题/判断题
             user_answer = []
-            original_options = question['options']
+            correct_answer = question['correct_answer']
             
-            # 遍历所有选项，查找选中的选项
-            for i, widget in enumerate(self.option_widgets):
-                # 只处理单选按钮和复选框控件
-                if isinstance(widget, (QRadioButton, QCheckBox)):
-                    # 检查控件是否被选中
-                    if widget.isChecked():
-                        # 直接从复选框获取文本
-                        option_text = widget.text()
-                        
-                        # 查找当前选项对应的原始选项
-                        # 1. 提取选项内容（去除ABCD标识）
-                        import re
-                        current_content = re.sub(r'^[A-Za-z][.:、]\s*', '', option_text)
-                        
-                        # 遍历原始选项，提取内容进行匹配
-                        for original_option in original_options:
-                            original_content = re.sub(r'^[A-Za-z][.:、]\s*', '', original_option)
-                            if current_content.strip() == original_content.strip():
-                                user_answer.append(original_option)
-                                break
+            # 遍历所有选项按钮，查找选中的选项
+            for widget in self.option_widgets:
+                # 检查控件是否被选中
+                if widget.isChecked():
+                    option_text = widget.text()
+                    
+                    # 根据正确答案的格式来决定保存格式
+                    # 检查正确答案是否为仅选项字母格式
+                    is_letter_format = False
+                    import re
+                    
+                    if correct_answer:
+                        first_answer = correct_answer[0]
+                        # 检查第一个正确答案是否仅包含一个字母
+                        if re.match(r'^[A-Za-z]$', first_answer):
+                            is_letter_format = True
+                    
+                    if is_letter_format:
+                        # 提取选项字母
+                        match = re.match(r'^([A-Za-z])[.:、]?\s*', option_text)
+                        if match:
+                            user_answer.append(match.group(1))
+                    else:
+                        # 保存完整选项文本
+                        user_answer.append(option_text)
             
             self.question_manager.save_user_answer(index, user_answer)
         
@@ -1152,22 +1168,28 @@ class ExamWindow(QWidget):
             # 遍历选项控件，找到所有单选/复选框
             for widget in self.option_widgets:
                 if isinstance(widget, (QRadioButton, QCheckBox)):
-                    # 提取选项文本
+                    # 检查当前选项文本是否为正确答案，支持两种格式：
+                    # 1. 完整选项文本（如"A. 3"）
+                    # 2. 仅选项字母（如"A"）
                     current_text = widget.text()
-                    # 找到当前选项对应的原始选项
-                    for option in question['options']:
-                        # 提取选项内容进行匹配
+                    is_correct = False
+                    
+                    # 尝试完整文本匹配
+                    if current_text in correct_answer:
+                        is_correct = True
+                    else:
+                        # 尝试提取选项字母进行匹配
                         import re
-                        current_content = re.sub(r'^[A-Za-z][.:、]\s*', '', current_text)
-                        option_content = re.sub(r'^[A-Za-z][.:、]\s*', '', option)
-                        if current_content.strip() == option_content.strip():
-                            # 检查是否为正确答案
-                            is_correct = option in correct_answer
-                            if is_correct:
-                                widget.setStyleSheet(f"color: green; font-size: {self.current_font_size}px;")
-                            else:
-                                widget.setStyleSheet(f"color: red; font-size: {self.current_font_size}px;")
-                            break
+                        match = re.match(r'^([A-Za-z])[.:、]?\s*', current_text)
+                        if match:
+                            option_letter = match.group(1)
+                            if option_letter in correct_answer:
+                                is_correct = True
+                    
+                    if is_correct:
+                        widget.setStyleSheet(f"color: green; font-size: {self.current_font_size}px;")
+                    else:
+                        widget.setStyleSheet(f"color: red; font-size: {self.current_font_size}px;")
             
             # 显示解析
             if hasattr(self, 'analysis_label'):
@@ -1241,6 +1263,25 @@ class ExamWindow(QWidget):
         # 更新所有按钮的字体大小
         for button in [self.prev_button, self.next_button, self.answer_button, self.submit_button]:
             button.setStyleSheet(f"font-size: {self.current_font_size}px;")
+        
+        # 更新答案解析的字体大小
+        if hasattr(self, 'analysis_label'):
+            analysis_label = self.analysis_label
+            # 保持原有的颜色样式，只更新字体大小
+            current_style = analysis_label.styleSheet()
+            color = "green"
+            if "color" in current_style:
+                import re
+                color_match = re.search(r"color: ([^;]+);", current_style)
+                if color_match:
+                    color = color_match.group(1)
+            font_weight = "bold"
+            if "font-weight" in current_style:
+                import re
+                weight_match = re.search(r"font-weight: ([^;]+);", current_style)
+                if weight_match:
+                    font_weight = weight_match.group(1)
+            analysis_label.setStyleSheet(f"color: {color}; font-weight: {font_weight}; font-size: {self.current_font_size}px;")
     
     def prev_question(self):
         """上一题"""

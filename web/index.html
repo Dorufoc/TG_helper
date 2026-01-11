@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>哈基扬在线答题系统</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="vue.global.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- 全局答题卡按钮 -->
+        <button @click="toggleAnswerSheet" class="btn btn-secondary global-answer-sheet-btn" v-if="step === 'answer'">
+            答题卡
+        </button>
+
+        <!-- 悬浮提示 -->
+        <div v-if="notification" :class="['notification', notification.type]">
+            {{ notification.message }}
+        </div>
+
+        <!-- 确认弹窗 -->
+        <div v-if="confirmModal.show" class="modal">
+            <div class="modal-content">
+                <h3>{{ confirmModal.title }}</h3>
+                <p>{{ confirmModal.message }}</p>
+                <div class="modal-buttons">
+                    <button @click="confirmModal.callback(true)" class="btn btn-primary">确认</button>
+                    <button @click="confirmModal.callback(false)" class="btn btn-secondary">取消</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 初始页面：加载题库 -->
+        <div v-if="step === 'load'" class="container">
+            <h1>在线答题系统</h1>
+            <div class="form-group">
+                <label for="filePath">选择题库文件：</label>
+                <select id="filePath" v-model="filePath">
+                    <option v-for="file in availableFiles" :key="file" :value="file">
+                        {{ file }}
+                    </option>
+                </select>
+            </div>
+            <button @click="loadQuestions" class="btn btn-primary">加载题库</button>
+            <div v-if="error" class="error-message">{{ error }}</div>
+            <div v-if="stats" class="stats">
+                <h3>题库统计：</h3>
+                <p>总题数：{{ stats.total_questions }}</p>
+                <ul>
+                    <li v-for="(count, type) in stats.stats" :key="type">
+                        {{ type }}：{{ count }}题
+                    </li>
+                </ul>
+                <button @click="step = 'extract'" class="btn btn-secondary">开始抽取题目</button>
+            </div>
+        </div>
+
+        <!-- 抽取题目页面 -->
+        <div v-if="step === 'extract'" class="container">
+            <h1>抽取题目</h1>
+            <h3>题型数量设置：</h3>
+            <div v-for="(type, index) in availableTypes" :key="index" class="form-group">
+                <label>{{ type }}数量（最多{{ stats.stats[type] }}题）：</label>
+                <input type="number" v-model="typeCounts[type]" min="0" :max="stats.stats[type]">
+            </div>
+            <div class="form-group">
+                <p>总题数：{{ totalSelectedQuestions }}</p>
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" v-model="studyMode"> 开启背题模式
+                </label>
+            </div>
+            <button @click="extractQuestions" class="btn btn-primary" :disabled="totalSelectedQuestions === 0">抽取题目</button>
+            <div v-if="error" class="error-message">{{ error }}</div>
+        </div>
+
+        <!-- 答题页面 -->
+        <div v-if="step === 'answer'" class="container">
+            <div class="header">
+                <h1>在线答题</h1>
+                <div class="progress">
+                    <div class="progress-bar" :style="{ width: progress + '%' }"></div>
+                    <div class="progress-text">{{ currentIndex + 1 }}/{{ totalQuestions }}</div>
+                </div>
+            </div>
+
+            <div v-if="currentQuestion" class="question">
+                <div class="question-header">
+                    <h2>题目 {{ currentIndex + 1 }}</h2>
+                    <span class="question-type">{{ currentQuestion.type }}</span>
+                </div>
+                <div class="question-content">{{ currentQuestion.content }}</div>
+
+                <!-- 选项 -->
+                <div v-if="currentQuestion.options && currentQuestion.options.length > 0" class="options">
+                    <div v-if="currentQuestion.type === '单选题' || currentQuestion.type === '判断题'">
+                        <div 
+                            v-for="(option, index) in currentQuestion.options" 
+                            :key="index" 
+                            class="option-item"
+                            @click="selectOption(option.split('.')[0], index)"
+                        >
+                            <input 
+                                type="radio" 
+                                :id="'option-' + index" 
+                                :value="option.split('.')[0]" 
+                                v-model="userAnswer[0]"
+                                :disabled="isAnswerViewed || studyMode"
+                            >
+                            <label 
+                                :for="'option-' + index" 
+                                :class="{
+                                    'correct': isAnswerViewed && correctAnswer.includes(option.split('.')[0]),
+                                    'incorrect': isAnswerViewed && userAnswer.includes(option.split('.')[0]) && !correctAnswer.includes(option.split('.')[0])
+                                }"
+                            >
+                                {{ option }}
+                            </label>
+                        </div>
+                    </div>
+                    <div v-else-if="currentQuestion.type === '多选题'">
+                        <div 
+                            v-for="(option, index) in currentQuestion.options" 
+                            :key="index" 
+                            class="option-item"
+                            @click="selectMultipleOption(option.split('.')[0], index)"
+                        >
+                            <input 
+                                type="checkbox" 
+                                :id="'option-' + index" 
+                                :value="option.split('.')[0]" 
+                                v-model="userAnswer"
+                                :disabled="isAnswerViewed || studyMode"
+                            >
+                            <label 
+                                :for="'option-' + index" 
+                                :class="{
+                                    'correct': isAnswerViewed && correctAnswer.includes(option.split('.')[0]),
+                                    'incorrect': isAnswerViewed && userAnswer.includes(option.split('.')[0]) && !correctAnswer.includes(option.split('.')[0])
+                                }"
+                            >
+                                {{ option }}
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 填空题/简答题/释义题 -->
+                <div v-else-if="['填空题', '简答题', '释义题'].includes(currentQuestion.type)" class="input-answer">
+                    <div v-for="(answer, index) in userAnswer" :key="index" class="input-item">
+                        <input 
+                            type="text" 
+                            v-model="userAnswer[index]" 
+                            placeholder="请输入答案"
+                            :disabled="studyMode"
+                            @input="autoSaveAnswer"
+                            @change="autoSaveAnswer"
+                        >
+                    </div>
+                    <!-- 显示正确答案 -->
+                    <div v-if="isAnswerViewed" class="correct-answer">
+                        <h3>正确答案：</h3>
+                        <div v-for="(answer, index) in correctAnswer" :key="index" class="correct-answer-item">
+                            {{ answer }}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 答案解析 -->
+                <div v-if="isAnswerViewed && currentQuestion.analysis" class="analysis">
+                    <h3>答案解析：</h3>
+                    <p>{{ currentQuestion.analysis }}</p>
+                </div>
+            </div>
+
+            <div class="navigation">
+                <button @click="prevQuestion" class="btn btn-secondary" :disabled="currentIndex === 0">上一题</button>
+                <button @click="nextQuestion" class="btn btn-secondary" :disabled="currentIndex === totalQuestions - 1">下一题</button>
+                <button @click="viewAnswer" class="btn btn-info" v-if="!isAnswerViewed && !studyMode">查看答案</button>
+                <button 
+                    v-if="studyMode"
+                    @click="restart"
+                    class="btn btn-primary"
+                >
+                    返回主页面
+                </button>
+                <button 
+                    v-else
+                    @click="submitExam"
+                    class="btn btn-danger"
+                >
+                    提交考试
+                </button>
+            </div>
+
+            <!-- 统计信息 -->
+            <div class="stats-summary">
+                <div class="stats-item">
+                    <span class="stats-label">累计正确：</span>
+                    <span class="stats-value correct">{{ totalCorrect }}</span>
+                </div>
+                <div class="stats-item">
+                    <span class="stats-label">累计错误：</span>
+                    <span class="stats-value wrong">{{ totalWrong }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 答题卡浮动窗口 -->
+        <div v-if="answerSheet.show" class="modal">
+            <div class="modal-content answer-sheet-modal">
+                <div class="modal-header">
+                    <h3>答题卡</h3>
+                    <button @click="answerSheet.show = false" class="close-btn">&times;</button>
+                </div>
+                <div class="answer-sheet-content">
+                    <div v-for="group in answerSheet.questions" :key="group.type" class="question-group">
+                        <h4 class="group-title">{{ group.type }}</h4>
+                        <div class="question-cards">
+                            <button 
+                                v-for="question in group.questions" 
+                                :key="question.index"
+                                class="question-card"
+                                :style="getCardStyle(question)"
+                                @click="jumpToQuestion(question.index)"
+                            >
+                                {{ question.displayNumber }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 成绩页面 -->
+        <div v-if="step === 'result'" class="container">
+            <h1>考试成绩</h1>
+            <div class="result">
+                <p class="score">得分：{{ result.score }}分</p>
+                <p>正确题数：{{ result.correct_count }}/{{ result.total_questions }}</p>
+                <button @click="restart" class="btn btn-primary">重新开始</button>
+                <button @click="generateWrongQuestionsBook" class="btn btn-secondary" v-if="result.wrong_questions && result.wrong_questions.length > 0">
+                    生成错题本
+                </button>
+            </div>
+
+            <!-- 错题列表 -->
+            <div v-if="result.wrong_questions && result.wrong_questions.length > 0" class="wrong-questions">
+                <h2>错题集</h2>
+                <div v-for="(question, index) in result.wrong_questions" :key="index" class="wrong-question-item">
+                    <div class="question-header">
+                        <h3>第{{ question.id }}题 ({{ question.type }})</h3>
+                    </div>
+                    <div class="question-content">{{ question.content }}</div>
+                    
+                    <!-- 显示选项 -->
+                    <div v-if="question.options && question.options.length > 0" class="options">
+                        <div v-for="(option, optIndex) in question.options" :key="optIndex" class="option-item">
+                            <label 
+                                :class="{
+                                    'correct': question.correct_answer.includes(option.split('.')[0]),
+                                    'incorrect': question.user_answer.includes(option.split('.')[0])
+                                }"
+                            >
+                                {{ option }}
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- 显示答案 -->
+                    <div class="answers">
+                        <p><strong>您的答案：</strong>{{ formatAnswer(question.user_answer) }}</p>
+                        <p><strong>正确答案：</strong>{{ formatAnswer(question.correct_answer) }}</p>
+                    </div>
+                    
+                    <!-- 答案解析 -->
+                    <div v-if="question.analysis" class="analysis">
+                        <h4>解析：</h4>
+                        <p>{{ question.analysis }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
