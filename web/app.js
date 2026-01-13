@@ -30,6 +30,7 @@ createApp({
                 typeOrder: ['单选题', '多选题', '判断题', '填空题', '简答题', '释义题']
             },
             studyMode: false, // 背题模式
+            autoShowAnswer: false, // 选择答案后自动显示答案
             localQuestions: [], // 本地存储的题目数据
             localAnswers: {}, // 本地存储的用户答案
             localViewedAnswers: {} // 本地存储的已查看答案状态
@@ -50,15 +51,17 @@ createApp({
         totalCorrect() {
             let correct = 0;
             for (let i = 0; i < this.localQuestions.length; i++) {
-                if (this.localViewedAnswers[i]) {
-                    const question = this.localQuestions[i];
-                    const user_answer = this.localAnswers[i] || [];
-                    const correct_answer = question.correct_answer;
-                    
+                const question = this.localQuestions[i];
+                const user_answer = this.localAnswers[i] || [];
+                const correct_answer = question.correct_answer;
+                
+                // 只有当用户已经作答时才进行统计
+                const is_answered = user_answer.length > 0 && user_answer.some(ans => ans.trim() !== '');
+                if (is_answered) {
                     let is_correct = false;
-                    if (question.type in ['单选题', '判断题', '多选题', '选择题']) {
+                    if (['单选题', '判断题', '多选题', '选择题'].includes(question.type)) {
                         is_correct = JSON.stringify(user_answer.sort()) === JSON.stringify(correct_answer.sort());
-                    } else if (question.type in ['填空题', '简答题', '释义题']) {
+                    } else if (['填空题', '简答题', '释义题'].includes(question.type)) {
                         if (user_answer.length === correct_answer.length) {
                             let is_all_correct = true;
                             for (let j = 0; j < user_answer.length; j++) {
@@ -81,15 +84,17 @@ createApp({
         totalWrong() {
             let wrong = 0;
             for (let i = 0; i < this.localQuestions.length; i++) {
-                if (this.localViewedAnswers[i]) {
-                    const question = this.localQuestions[i];
-                    const user_answer = this.localAnswers[i] || [];
-                    const correct_answer = question.correct_answer;
-                    
+                const question = this.localQuestions[i];
+                const user_answer = this.localAnswers[i] || [];
+                const correct_answer = question.correct_answer;
+                
+                // 只有当用户已经作答时才进行统计
+                const is_answered = user_answer.length > 0 && user_answer.some(ans => ans.trim() !== '');
+                if (is_answered) {
                     let is_correct = false;
-                    if (question.type in ['单选题', '判断题', '多选题', '选择题']) {
+                    if (['单选题', '判断题', '多选题', '选择题'].includes(question.type)) {
                         is_correct = JSON.stringify(user_answer.sort()) === JSON.stringify(correct_answer.sort());
-                    } else if (question.type in ['填空题', '简答题', '释义题']) {
+                    } else if (['填空题', '简答题', '释义题'].includes(question.type)) {
                         if (user_answer.length === correct_answer.length) {
                             let is_all_correct = true;
                             for (let j = 0; j < user_answer.length; j++) {
@@ -259,6 +264,10 @@ createApp({
                     if (['填空题', '简答题', '释义题'].includes(this.currentQuestion.type) && this.userAnswer.length === 0) {
                         this.userAnswer = [''];
                     }
+                    // 对于单选题和判断题，如果没有答案，初始化空数组
+                    if (['单选题', '判断题'].includes(this.currentQuestion.type) && this.userAnswer.length === 0) {
+                        this.userAnswer = [''];
+                    }
                     
                     // 如果已经查看过答案，获取正确答案
                     if (this.isAnswerViewed) {
@@ -359,9 +368,9 @@ createApp({
                     
                     // 根据题型检查答案是否正确
                     let is_correct = false;
-                    if (question.type in ['单选题', '判断题', '多选题', '选择题']) {
+                    if (['单选题', '判断题', '多选题', '选择题'].includes(question.type)) {
                         is_correct = JSON.stringify(user_answer.sort()) === JSON.stringify(correct_answer.sort());
-                    } else if (question.type in ['填空题', '简答题', '释义题']) {
+                    } else if (['填空题', '简答题', '释义题'].includes(question.type)) {
                         if (user_answer.length === correct_answer.length) {
                             let is_all_correct = true;
                             for (let j = 0; j < user_answer.length; j++) {
@@ -501,6 +510,11 @@ createApp({
             if (!this.isAnswerViewed && !this.studyMode) {
                 this.userAnswer[0] = value;
                 this._saveCurrentAnswer();
+                
+                // 如果开启了自动显示答案，选择后自动查看答案
+                if (this.autoShowAnswer && !this.isAnswerViewed) {
+                    this.viewAnswer();
+                }
             }
         },
         
@@ -514,6 +528,11 @@ createApp({
                     this.userAnswer.splice(index, 1);
                 }
                 this._saveCurrentAnswer();
+                
+                // 如果开启了自动显示答案，选择后自动查看答案
+                if (this.autoShowAnswer && !this.isAnswerViewed) {
+                    this.viewAnswer();
+                }
             }
         },
         

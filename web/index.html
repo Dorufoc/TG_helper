@@ -72,6 +72,11 @@
                     <input type="checkbox" v-model="studyMode"> 开启背题模式
                 </label>
             </div>
+            <div class="form-group" v-if="!studyMode">
+                <label>
+                    <input type="checkbox" v-model="autoShowAnswer"> 选择答案后自动显示答案
+                </label>
+            </div>
             <button @click="extractQuestions" class="btn btn-primary" :disabled="totalSelectedQuestions === 0">抽取题目</button>
             <div v-if="error" class="error-message">{{ error }}</div>
         </div>
@@ -95,25 +100,52 @@
 
                 <!-- 选项 -->
                 <div v-if="currentQuestion.options && currentQuestion.options.length > 0" class="options">
-                    <div v-if="currentQuestion.type === '单选题' || currentQuestion.type === '判断题'">
+                    <!-- 判断题单独处理 -->
+                    <div v-if="currentQuestion.type === '判断题'">
                         <div 
                             v-for="(option, index) in currentQuestion.options" 
                             :key="index" 
                             class="option-item"
-                            @click="selectOption(option.split('.')[0], index)"
+                            @click="selectOption(option, index)"
                         >
                             <input 
                                 type="radio" 
                                 :id="'option-' + index" 
-                                :value="option.split('.')[0]" 
+                                :value="option" 
                                 v-model="userAnswer[0]"
                                 :disabled="isAnswerViewed || studyMode"
                             >
                             <label 
                                 :for="'option-' + index" 
                                 :class="{
-                                    'correct': isAnswerViewed && correctAnswer.includes(option.split('.')[0]),
-                                    'incorrect': isAnswerViewed && userAnswer.includes(option.split('.')[0]) && !correctAnswer.includes(option.split('.')[0])
+                                    'correct': isAnswerViewed && correctAnswer.includes(option),
+                                    'incorrect': isAnswerViewed && userAnswer.includes(option) && !correctAnswer.includes(option)
+                                }"
+                            >
+                                {{ option }}
+                            </label>
+                        </div>
+                    </div>
+                    <!-- 单选题处理 -->
+                    <div v-else-if="currentQuestion.type === '单选题'">
+                        <div 
+                            v-for="(option, index) in currentQuestion.options" 
+                            :key="index" 
+                            class="option-item"
+                            @click="selectOption(option.match(/^[A-Za-z]/)[0], index)"
+                        >
+                            <input 
+                                type="radio" 
+                                :id="'option-' + index" 
+                                :value="option.match(/^[A-Za-z]/)[0]" 
+                                v-model="userAnswer[0]"
+                                :disabled="isAnswerViewed || studyMode"
+                            >
+                            <label 
+                                :for="'option-' + index" 
+                                :class="{
+                                    'correct': isAnswerViewed && correctAnswer.includes(option.match(/^[A-Za-z]/)[0]),
+                                    'incorrect': isAnswerViewed && userAnswer.includes(option.match(/^[A-Za-z]/)[0]) && !correctAnswer.includes(option.match(/^[A-Za-z]/)[0])
                                 }"
                             >
                                 {{ option }}
@@ -125,20 +157,20 @@
                             v-for="(option, index) in currentQuestion.options" 
                             :key="index" 
                             class="option-item"
-                            @click="selectMultipleOption(option.split('.')[0], index)"
+                            @click="selectMultipleOption(option.match(/^[A-Za-z]/)[0], index)"
                         >
                             <input 
                                 type="checkbox" 
                                 :id="'option-' + index" 
-                                :value="option.split('.')[0]" 
+                                :value="option.match(/^[A-Za-z]/)[0]" 
                                 v-model="userAnswer"
                                 :disabled="isAnswerViewed || studyMode"
                             >
                             <label 
                                 :for="'option-' + index" 
                                 :class="{
-                                    'correct': isAnswerViewed && correctAnswer.includes(option.split('.')[0]),
-                                    'incorrect': isAnswerViewed && userAnswer.includes(option.split('.')[0]) && !correctAnswer.includes(option.split('.')[0])
+                                    'correct': isAnswerViewed && correctAnswer.includes(option.match(/^[A-Za-z]/)[0]),
+                                    'incorrect': isAnswerViewed && userAnswer.includes(option.match(/^[A-Za-z]/)[0]) && !correctAnswer.includes(option.match(/^[A-Za-z]/)[0])
                                 }"
                             >
                                 {{ option }}
@@ -154,7 +186,7 @@
                             type="text" 
                             v-model="userAnswer[index]" 
                             placeholder="请输入答案"
-                            :disabled="studyMode"
+                            :disabled="isAnswerViewed || studyMode"
                             @input="autoSaveAnswer"
                             @change="autoSaveAnswer"
                         >
@@ -181,7 +213,7 @@
                 <button @click="viewAnswer" class="btn btn-info" v-if="!isAnswerViewed && !studyMode">查看答案</button>
                 <button 
                     v-if="studyMode"
-                    @click="restart"
+                    @click="showConfirm('确认返回', '当前进度不会保存，下次启动顺序将重新打乱', (confirmed) => { if(confirmed) restart(); } )"
                     class="btn btn-primary"
                 >
                     返回主页面
@@ -260,8 +292,8 @@
                         <div v-for="(option, optIndex) in question.options" :key="optIndex" class="option-item">
                             <label 
                                 :class="{
-                                    'correct': question.correct_answer.includes(option.split('.')[0]),
-                                    'incorrect': question.user_answer.includes(option.split('.')[0])
+                                    'correct': question.type === '判断题' ? question.correct_answer.includes(option) : question.correct_answer.includes(option.match(/^[A-Za-z]/)[0]),
+                                    'incorrect': question.type === '判断题' ? question.user_answer.includes(option) : question.user_answer.includes(option.match(/^[A-Za-z]/)[0])
                                 }"
                             >
                                 {{ option }}

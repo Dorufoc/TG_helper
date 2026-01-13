@@ -1,7 +1,8 @@
 import json
 
 # 读取JSON文件
-with open('questions.json', 'r', encoding='utf-8') as f:
+input_file = input("请输入JSON文件路径: ")
+with open(input_file, 'r', encoding='utf-8') as f:
     questions = json.load(f)
 
 # 转换为纯文本格式
