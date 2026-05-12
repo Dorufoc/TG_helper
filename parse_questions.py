@@ -1,193 +1,225 @@
-import os
 import re
 import json
-from bs4 import BeautifulSoup
 
+def parse_question_bank(filepath):
+    with open(filepath, 'r', encoding='utf-8') as f:
+        lines = f.read().splitlines()
 
-def parse_html_to_json(file_path):
-    """
-    解析HTML文件，提取题目信息并转换为JSON格式
-    """
-    with open(file_path, 'r', encoding='utf-8') as f:
-        html_content = f.read()
-    
-    soup = BeautifulSoup(html_content, 'html.parser')
-    
-    # 获取标题
-    title = soup.find('title').text if soup.find('title') else '未知标题'
-    
-    # 提取所有题目
     questions = []
-    
-    # 找到所有题目容器
-    subject_elements = soup.find_all(class_='subject')
-    
-    for i, subject in enumerate(subject_elements):
+    i = 0
+    total = len(lines)
+
+    # 跳过开头课程名称行
+    while i < total and not re.match(r'^\d+[、.．]\s*(单选题|填空题|简答题)', lines[i]):
+        i += 1
+
+    while i < total:
+        line = lines[i].strip()
+
+        # 检测大题标题行，如 "第2大题 填空题"
+        big_title_match = re.match(r'^第\d+大题\s*(.*)', line)
+        if big_title_match:
+            i += 1
+            continue
+
+        # 检测题目开始：如 "1、单选题" 或 "1. 单选题" 或 "1．单选题"
+        q_match = re.match(r'^(\d+)[、.．]\s*(单选题|填空题|简答题)', line)
+        if not q_match:
+            i += 1
+            continue
+
+        q_type = q_match.group(2)
+        q_number = q_match.group(1)
+        i += 1
+
+        # 收集题目内容（可能多行，直到遇到选项A或下一个题目或参考答案）
+        content_lines = []
+        while i < total:
+            l = lines[i].strip()
+            if not l:
+                i += 1
+                continue
+            # 如果是单选题且遇到 A. 开头，停止收集题干
+            if q_type == '单选题' and re.match(r'^[A-D][.、．]', l):
+                break
+            # 如果是填空题且遇到 【参考答案】，停止收集题干
+            if q_type == '填空题' and l.startswith('【参考答案】'):
+                break
+            # 如果是简答题且遇到 【参考答案】，停止收集题干
+            if q_type == '简答题' and l.startswith('【参考答案】'):
+                break
+            # 如果遇到下一道题，停止
+            if re.match(r'^\d+[、.．]\s*(单选题|填空题|简答题)', l):
+                break
+            # 如果遇到新的大题标题
+            if re.match(r'^第\d+大题', l):
+                break
+            content_lines.append(l)
+            i += 1
+
+        content = ' '.join(content_lines).strip()
+        # 清理多余空格
+        content = re.sub(r'\s+', ' ', content)
+
         question = {
-            'id': i + 1,
-            'title': title,
-            'type': '',
-            'content': '',
-            'options': [],
-            'correct_answer': [],
-            'analysis': ''
+            'type': q_type,
+            'content': content,
         }
-        
-        # 提取题目内容
-        content_div = subject.find(class_='subject-body')
-        if content_div:
-            question['content'] = content_div.text.strip()
-        
-        # 找到题目对应的选项容器
-        subject_parent = subject.parent
-        option_container = subject_parent.find(class_='option')
-        
-        # 检查是否为填空题（通过textarea识别）
-        textarea = None
-        # 查找当前题目所在的li元素
-        li_element = subject.find_parent('li')
-        if li_element:
-            # 在li元素中查找所有textarea元素
-            textareas = li_element.find_all('textarea')
-            if textareas:
-                textarea = textareas[0]
-        
-        # 如果在li中没有找到textarea，尝试其他方式
-        if not textarea:
-            # 查找当前题目对应的option容器
-            option_div = subject.find_next_sibling('div', class_='option')
-            if not option_div:
-                option_div = subject_parent.find_next_sibling('div', class_='option')
-            
-            if option_div:
-                textareas = option_div.find_all('textarea')
-                if textareas:
-                    textarea = textareas[0]
-        
-        if textarea:
-            # 根据textarea的属性判断是填空题、简答题还是释义题
-            question['type'] = '填空题'
-            
-            # 检查textarea的高度或行数属性，判断是否为简答题或释义题
-            rows = textarea.get('rows', '')
-            style = textarea.get('style', '')
-            
-            # 检查题目内容中是否包含释义题相关关键词
-            content = question.get('content', '')
-            is_paraphrase = False
-            if content:
-                # 检查题目内容中是否包含释义相关关键词
-                paraphrase_keywords = ['解释', '释义', '说明', '什么是', '简述']
-                for keyword in paraphrase_keywords:
-                    if keyword in content:
-                        is_paraphrase = True
-                        break
-            
-            # 检查textarea的属性
-            if rows:
-                try:
-                    if int(rows) > 1:
-                        if is_paraphrase:
-                            question['type'] = '释义题'
+
+        if q_type == '单选题':
+            options = []
+            # 读取选项（A. B. C. D.）
+            while i < total:
+                l = lines[i].strip()
+                if not l:
+                    i += 1
+                    continue
+                opt_match = re.match(r'^([A-D])[.、．]\s*(.*)', l)
+                if opt_match:
+                    options.append(opt_match.group(2).strip())
+                    i += 1
+                else:
+                    break
+            question['options'] = options
+
+            # 寻找【参考答案】
+            correct_answer = []
+            while i < total:
+                l = lines[i].strip()
+                if not l:
+                    i += 1
+                    continue
+                ref_match = re.search(r'【参考答案】\s*([A-D])', l)
+                if ref_match:
+                    correct_answer.append(ref_match.group(1))
+                    i += 1
+                    break
+                # 如果遇到下一道题，停止
+                if re.match(r'^\d+[、.．]\s*(单选题|填空题|简答题)', l):
+                    break
+                if re.match(r'^第\d+大题', l):
+                    break
+                i += 1
+
+            question['correct_answer'] = correct_answer if correct_answer else []
+
+        elif q_type == '填空题':
+            # 寻找【参考答案】
+            while i < total:
+                l = lines[i].strip()
+                if not l:
+                    i += 1
+                    continue
+                if l.startswith('【参考答案】'):
+                    # 解析参考答案，格式如 (1)、13 (2)、7856H
+                    ref_text = l[len('【参考答案】'):].strip()
+                    # 可能有多行参考答案
+                    full_ref = ref_text
+                    i += 1
+                    while i < total:
+                        next_l = lines[i].strip()
+                        if not next_l or re.match(r'^\d+[、.．]', next_l) or next_l.startswith('第') or next_l.startswith('第'):
+                            break
+                        # 如果下一行仍然是参考答案的一部分（以(数字)、开头）
+                        if re.match(r'^\(\d+\)[、，,]\s*', next_l) or re.match(r'^\(\d+\)[、，,]\s*', next_l):
+                            full_ref += ' ' + next_l
+                            i += 1
                         else:
-                            question['type'] = '简答题'
-                except ValueError:
-                    pass
-            elif 'height' in style:
-                # 简单解析style中的height属性
-                height_match = re.search(r'height:\s*(\d+)px', style)
-                if height_match:
-                    try:
-                        if int(height_match.group(1)) > 50:
-                            if is_paraphrase:
-                                question['type'] = '释义题'
-                            else:
-                                question['type'] = '简答题'
-                    except ValueError:
-                        pass
-            
-            # 填空题、简答题和释义题的正确答案都在textarea的内容中
-            value = textarea.text.strip() or textarea.string.strip() if textarea.string else ''
-            # 检查是否有多个答案（用分号或逗号分隔）
-            if value:
-                # 支持多个答案，用分号或逗号分隔
-                answers = re.split(r'[,;，；]', value)
-                # 去除每个答案的首尾空格
-                answers = [answer.strip() for answer in answers if answer.strip()]
-                question['correct_answer'] = answers
-            questions.append(question)
-            continue
-        
-        # 检查是否为判断题（带选项的判断题）
-        radio_group = subject_parent.find(class_='ant-radio-group')
-        if radio_group:
-            question['type'] = '判断题'
-            # 找到所有选项
-            radio_labels = radio_group.find_all(class_='ant-radio-wrapper')
-            for label in radio_labels:
-                option_text = label.find('span', class_='ant-radio-label').text.strip()
-                # 检查是否为正确答案
-                is_checked = 'ant-radio-wrapper-checked' in label.get('class', [])
-                question['options'].append(option_text)
-                if is_checked:
-                    question['correct_answer'].append(option_text)
-            questions.append(question)
-            continue
-        
-        # 检查是否为选择题（单选或多选）
-        if option_container:
-            # 提取所有选项
-            options = option_container.find_all('a', class_='flex-container')
-            # 检查是单选还是多选
-            has_radio = option_container.find('input', type='radio') is not None
-            has_checkbox = option_container.find('input', type='checkbox') is not None
-            
-            for opt in options:
-                label = opt.find(class_='checkTitle').text.strip()  # 选项标识（A、B、C、D）
-                content = opt.find(class_='subject-body').text.strip()  # 选项内容
-                question['options'].append(f"{label} {content}")
-                
-                # 检查是否为正确答案
-                is_checked = opt.find('input', checked='') is not None
-                if is_checked:
-                    question['correct_answer'].append(f"{label} {content}")
-            
-            # 确定题型
-            if has_checkbox:
-                question['type'] = '多选题'
-            elif has_radio:
-                question['type'] = '单选题'
-            
-            questions.append(question)
-        else:
-            # 没有选项的题目，可能是其他类型
-            questions.append(question)
-    
+                            break
+
+                    # 解析答案
+                    answers = []
+                    # 匹配 (1)、xxx (2)、xxx 或 (1), xxx (2), xxx 等模式
+                    parts = re.findall(r'\((\d+)\)[、，,]\s*([^\s(]+(?:\s+[^\s(]+)*)', full_ref)
+                    if parts:
+                        for num, ans in parts:
+                            ans = ans.strip().rstrip('}').rstrip('{')
+                            # 清理 {或} xxx 语法
+                            ans = re.sub(r'\{或\}\s*.*', '', ans).strip()
+                            answers.append(ans)
+                    else:
+                        # 尝试直接提取所有答案文本
+                        raw_answers = re.findall(r'[（(]\d+[)）][、，,]\s*([^（(]+)', full_ref)
+                        for ans in raw_answers:
+                            ans = ans.strip().rstrip('}').rstrip('{')
+                            ans = re.sub(r'\{或\}\s*.*', '', ans).strip()
+                            answers.append(ans)
+
+                    # 如果是单答案，直接使用
+                    if not answers:
+                        # 尝试直接取参考答案后的内容
+                        clean = ref_text.strip()
+                        if clean and not re.match(r'^\d', clean):
+                            answers = [clean]
+
+                    question['correct_answer'] = answers if answers else [full_ref.strip()]
+                    break
+                elif re.match(r'^\d+[、.．]', l) or re.match(r'^第\d+大题', l):
+                    break
+                i += 1
+
+            # 如果还没找到参考答案
+            if 'correct_answer' not in question:
+                question['correct_answer'] = []
+
+        elif q_type == '简答题':
+            # 简答题：收集内容后，寻找参考答案
+            answer_lines = []
+            while i < total:
+                l = lines[i].strip()
+                if not l:
+                    i += 1
+                    continue
+                if l.startswith('【参考答案】'):
+                    ref_text = l[len('【参考答案】'):].strip()
+                    if ref_text:
+                        answer_lines.append(ref_text)
+                    i += 1
+                    # 继续收集多行答案
+                    while i < total:
+                        next_l = lines[i].strip()
+                        if not next_l:
+                            i += 1
+                            continue
+                        if re.match(r'^\d+[、.．]\s*(单选题|填空题|简答题)', next_l):
+                            break
+                        if next_l.startswith('第') and '大题' in next_l:
+                            break
+                        answer_lines.append(next_l)
+                        i += 1
+                    break
+                elif re.match(r'^\d+[、.．]', l):
+                    break
+                elif re.match(r'^第\d+大题', l):
+                    break
+                i += 1
+
+            if answer_lines:
+                # 清理答案行
+                clean_answers = []
+                for a_line in answer_lines:
+                    a_line = a_line.strip()
+                    if a_line:
+                        clean_answers.append(a_line)
+                question['correct_answer'] = clean_answers
+            else:
+                question['correct_answer'] = []
+
+        questions.append(question)
+
     return questions
 
 
-def process_all_html_files():
-    """
-    处理html文件夹中的所有HTML文件
-    """
-    html_dir = 'html'
-    output_file = 'questions.json'
-    
-    all_questions = []
-    
-    # 遍历所有HTML文件
-    for filename in os.listdir(html_dir):
-        if filename.endswith('.html'):
-            file_path = os.path.join(html_dir, filename)
-            questions = parse_html_to_json(file_path)
-            all_questions.extend(questions)
-    
-    # 保存为JSON文件
-    with open(output_file, 'w', encoding='utf-8') as f:
-        json.dump(all_questions, f, ensure_ascii=False, indent=2)
-    
-    print(f"已成功提取{len(all_questions)}道题目，保存到{output_file}")
+if __name__ == '__main__':
+    result = parse_question_bank('汇编原理题库.txt')
+    output_path = '汇编原理题库.json'
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(result, f, ensure_ascii=False, indent=2)
+    print(f'成功转换 {len(result)} 道题目到 {output_path}')
 
-
-if __name__ == "__main__":
-    process_all_html_files()
+    # 统计各题型数量
+    stats = {}
+    for q in result:
+        t = q['type']
+        stats[t] = stats.get(t, 0) + 1
+    print('题型统计:', stats)

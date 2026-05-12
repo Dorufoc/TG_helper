@@ -77,6 +77,16 @@
                     <input type="checkbox" v-model="autoShowAnswer"> 选择答案后自动显示答案
                 </label>
             </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" v-model="shuffleQuestions"> 题目乱序
+                </label>
+            </div>
+            <div class="form-group" v-if="shuffleQuestions">
+                <label>
+                    <input type="checkbox" v-model="shuffleOptions"> 选项乱序
+                </label>
+            </div>
             <button @click="extractQuestions" class="btn btn-primary" :disabled="totalSelectedQuestions === 0">抽取题目</button>
             <div v-if="error" class="error-message">{{ error }}</div>
         </div>
@@ -128,59 +138,59 @@
                     </div>
                     <!-- 单选题处理 -->
                     <div v-else-if="currentQuestion.type === '单选题'">
-                        <div 
-                            v-for="(option, index) in currentQuestion.options" 
-                            :key="index" 
+                        <div
+                            v-for="(option, index) in currentQuestion.options"
+                            :key="index"
                             class="option-item"
-                            @click="selectOption(option.match(/^[A-Za-z]/)[0], index)"
+                            @click="selectOption(getOptionLetter(index), index)"
                         >
-                            <input 
-                                type="radio" 
-                                :id="'option-' + index" 
-                                :value="option.match(/^[A-Za-z]/)[0]" 
+                            <input
+                                type="radio"
+                                :id="'option-' + index"
+                                :value="getOptionLetter(index)"
                                 v-model="userAnswer[0]"
                                 :disabled="isAnswerViewed || studyMode"
                             >
-                            <label 
-                                :for="'option-' + index" 
+                            <label
+                                :for="'option-' + index"
                                 :class="{
-                                    'correct': isAnswerViewed && correctAnswer.includes(option.match(/^[A-Za-z]/)[0]),
-                                    'incorrect': isAnswerViewed && userAnswer.includes(option.match(/^[A-Za-z]/)[0]) && !correctAnswer.includes(option.match(/^[A-Za-z]/)[0])
+                                    'correct': isAnswerViewed && correctAnswer.includes(getOptionLetter(index)),
+                                    'incorrect': isAnswerViewed && userAnswer.includes(getOptionLetter(index)) && !correctAnswer.includes(getOptionLetter(index))
                                 }"
                             >
-                                {{ option }}
+                                {{ getOptionLetter(index) }}. {{ option }}
                             </label>
                         </div>
                     </div>
                     <div v-else-if="currentQuestion.type === '多选题'">
-                        <div 
-                            v-for="(option, index) in currentQuestion.options" 
-                            :key="index" 
+                        <div
+                            v-for="(option, index) in currentQuestion.options"
+                            :key="index"
                             class="option-item"
-                            @click="selectMultipleOption(option.match(/^[A-Za-z]/)[0], index)"
+                            @click="selectMultipleOption(getOptionLetter(index), index)"
                         >
-                            <input 
-                                type="checkbox" 
-                                :id="'option-' + index" 
-                                :value="option.match(/^[A-Za-z]/)[0]" 
+                            <input
+                                type="checkbox"
+                                :id="'option-' + index"
+                                :value="getOptionLetter(index)"
                                 v-model="userAnswer"
                                 :disabled="isAnswerViewed || studyMode"
                             >
-                            <label 
-                                :for="'option-' + index" 
+                            <label
+                                :for="'option-' + index"
                                 :class="{
-                                    'correct': isAnswerViewed && correctAnswer.includes(option.match(/^[A-Za-z]/)[0]),
-                                    'incorrect': isAnswerViewed && userAnswer.includes(option.match(/^[A-Za-z]/)[0]) && !correctAnswer.includes(option.match(/^[A-Za-z]/)[0])
+                                    'correct': isAnswerViewed && correctAnswer.includes(getOptionLetter(index)),
+                                    'incorrect': isAnswerViewed && userAnswer.includes(getOptionLetter(index)) && !correctAnswer.includes(getOptionLetter(index))
                                 }"
                             >
-                                {{ option }}
+                                {{ getOptionLetter(index) }}. {{ option }}
                             </label>
                         </div>
                     </div>
                 </div>
 
-                <!-- 填空题/简答题/释义题 -->
-                <div v-else-if="['填空题', '简答题', '释义题'].includes(currentQuestion.type)" class="input-answer">
+                <!-- 填空题/简答题/释义题/论述题/编程题 -->
+                <div v-else-if="['填空题', '简答题', '释义题', '论述题', '编程题'].includes(currentQuestion.type)" class="input-answer">
                     <div v-for="(answer, index) in userAnswer" :key="index" class="input-item">
                         <input 
                             type="text" 
@@ -208,22 +218,28 @@
             </div>
 
             <div class="navigation">
-                <button @click="prevQuestion" class="btn btn-secondary" :disabled="currentIndex === 0">上一题</button>
-                <button @click="nextQuestion" class="btn btn-secondary" :disabled="currentIndex === totalQuestions - 1">下一题</button>
-                <button @click="viewAnswer" class="btn btn-info" v-if="!isAnswerViewed && !studyMode">查看答案</button>
-                <button 
-                    v-if="studyMode"
-                    @click="showConfirm('确认返回', '当前进度不会保存，下次启动顺序将重新打乱', (confirmed) => { if(confirmed) restart(); } )"
-                    class="btn btn-primary"
-                >
-                    返回主页面
+                <button @click="prevQuestion" class="btn btn-secondary nav-btn" :disabled="currentIndex === 0">
+                    <span class="arrow-icon">&#8592;</span>
                 </button>
-                <button 
-                    v-else
-                    @click="submitExam"
-                    class="btn btn-danger"
-                >
-                    提交考试
+                <div class="nav-center">
+                    <button @click="viewAnswer" class="btn btn-info" v-if="!isAnswerViewed && !studyMode">查看答案</button>
+                    <button 
+                        v-if="studyMode"
+                        @click="showConfirm('确认返回', '当前进度不会保存，下次启动顺序将重新打乱', (confirmed) => { if(confirmed) restart(); } )"
+                        class="btn btn-primary"
+                    >
+                        返回主页面
+                    </button>
+                    <button 
+                        v-else
+                        @click="submitExam"
+                        class="btn btn-danger"
+                    >
+                        提交考试
+                    </button>
+                </div>
+                <button @click="nextQuestion" class="btn btn-secondary nav-btn" :disabled="currentIndex === totalQuestions - 1">
+                    <span class="arrow-icon">&#8594;</span>
                 </button>
             </div>
 
@@ -290,13 +306,13 @@
                     <!-- 显示选项 -->
                     <div v-if="question.options && question.options.length > 0" class="options">
                         <div v-for="(option, optIndex) in question.options" :key="optIndex" class="option-item">
-                            <label 
+                            <label
                                 :class="{
-                                    'correct': question.type === '判断题' ? question.correct_answer.includes(option) : question.correct_answer.includes(option.match(/^[A-Za-z]/)[0]),
-                                    'incorrect': question.type === '判断题' ? question.user_answer.includes(option) : question.user_answer.includes(option.match(/^[A-Za-z]/)[0])
+                                    'correct': question.type === '判断题' ? question.correct_answer.includes(option) : question.correct_answer.includes(getOptionLetter(optIndex)),
+                                    'incorrect': question.type === '判断题' ? question.user_answer.includes(option) : question.user_answer.includes(getOptionLetter(optIndex))
                                 }"
                             >
-                                {{ option }}
+                                {{ getOptionLetter(optIndex) }}. {{ option }}
                             </label>
                         </div>
                     </div>

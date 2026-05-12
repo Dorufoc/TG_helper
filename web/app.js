@@ -27,10 +27,12 @@ createApp({
             answerSheet: { // 答题卡
                 show: false,
                 questions: [], // 按题型分组的题目
-                typeOrder: ['单选题', '多选题', '判断题', '填空题', '简答题', '释义题']
+                typeOrder: ['单选题', '多选题', '判断题', '填空题', '简答题', '释义题', '论述题', '编程题']
             },
             studyMode: false, // 背题模式
             autoShowAnswer: false, // 选择答案后自动显示答案
+            shuffleQuestions: false, // 题目乱序
+            shuffleOptions: false, // 选项乱序
             localQuestions: [], // 本地存储的题目数据
             localAnswers: {}, // 本地存储的用户答案
             localViewedAnswers: {} // 本地存储的已查看答案状态
@@ -61,7 +63,7 @@ createApp({
                     let is_correct = false;
                     if (['单选题', '判断题', '多选题', '选择题'].includes(question.type)) {
                         is_correct = JSON.stringify(user_answer.sort()) === JSON.stringify(correct_answer.sort());
-                    } else if (['填空题', '简答题', '释义题'].includes(question.type)) {
+                    } else if (['填空题', '简答题', '释义题', '论述题', '编程题'].includes(question.type)) {
                         if (user_answer.length === correct_answer.length) {
                             let is_all_correct = true;
                             for (let j = 0; j < user_answer.length; j++) {
@@ -94,7 +96,7 @@ createApp({
                     let is_correct = false;
                     if (['单选题', '判断题', '多选题', '选择题'].includes(question.type)) {
                         is_correct = JSON.stringify(user_answer.sort()) === JSON.stringify(correct_answer.sort());
-                    } else if (['填空题', '简答题', '释义题'].includes(question.type)) {
+                    } else if (['填空题', '简答题', '释义题', '论述题', '编程题'].includes(question.type)) {
                         if (user_answer.length === correct_answer.length) {
                             let is_all_correct = true;
                             for (let j = 0; j < user_answer.length; j++) {
@@ -235,8 +237,20 @@ createApp({
                 
                 const data = await response.json();
                 if (data.success) {
+                    let questions = data.questions; // 保存题目数据到本地
+
+                    // 如果启用了选项乱序，对每个题目的选项进行打乱
+                    if (this.shuffleOptions) {
+                        questions = questions.map(q => this.shuffleQuestionOptions(q));
+                    }
+
+                    // 如果启用了题目乱序，对题目列表进行打乱
+                    if (this.shuffleQuestions) {
+                        questions = this.shuffleArray([...questions]);
+                    }
+
                     this.totalQuestions = data.questions_count;
-                    this.localQuestions = data.questions; // 保存题目数据到本地
+                    this.localQuestions = questions;
                     this.localAnswers = {}; // 初始化本地答案存储
                     this.localViewedAnswers = {}; // 初始化本地已查看答案状态
                     this.step = 'answer';
@@ -260,8 +274,8 @@ createApp({
                     this.userAnswer = this.localAnswers[this.currentIndex] || [];
                     this.isAnswerViewed = this.localViewedAnswers[this.currentIndex] || false;
                     
-                    // 对于填空题/简答题，如果没有答案，初始化空数组
-                    if (['填空题', '简答题', '释义题'].includes(this.currentQuestion.type) && this.userAnswer.length === 0) {
+                    // 对于填空题/简答题/论述题/编程题，如果没有答案，初始化空数组
+                    if (['填空题', '简答题', '释义题', '论述题', '编程题'].includes(this.currentQuestion.type) && this.userAnswer.length === 0) {
                         this.userAnswer = [''];
                     }
                     // 对于单选题和判断题，如果没有答案，初始化空数组
@@ -370,7 +384,7 @@ createApp({
                     let is_correct = false;
                     if (['单选题', '判断题', '多选题', '选择题'].includes(question.type)) {
                         is_correct = JSON.stringify(user_answer.sort()) === JSON.stringify(correct_answer.sort());
-                    } else if (['填空题', '简答题', '释义题'].includes(question.type)) {
+                    } else if (['填空题', '简答题', '释义题', '论述题', '编程题'].includes(question.type)) {
                         if (user_answer.length === correct_answer.length) {
                             let is_all_correct = true;
                             for (let j = 0; j < user_answer.length; j++) {
@@ -505,12 +519,65 @@ createApp({
             }
         },
         
+        getOptionLetter(index) {
+            /* 将选项索引转换为字母 (0=A, 1=B, 2=C, ...) */
+            return String.fromCharCode(65 + index); // 65 是 'A' 的 ASCII 码
+        },
+
+        shuffleArray(array) {
+            /* Fisher-Yates 洗牌算法，用于打乱数组 */
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        },
+
+        shuffleQuestionOptions(question) {
+            /* 对题目的选项进行打乱，并同步更新正确答案 */
+            if (!question.options || question.options.length <= 1) {
+                return question;
+            }
+
+            // 创建选项和原始索引的映射
+            const optionsWithIndex = question.options.map((opt, idx) => ({
+                text: opt,
+                originalIndex: idx,
+                letter: String.fromCharCode(65 + idx) // A, B, C, D...
+            }));
+
+            // 打乱选项
+            const shuffledOptions = this.shuffleArray([...optionsWithIndex]);
+
+            // 创建原始字母到新字母的映射
+            const letterMap = {};
+            shuffledOptions.forEach((opt, newIdx) => {
+                letterMap[opt.letter] = String.fromCharCode(65 + newIdx);
+            });
+
+            // 更新正确答案中的字母
+            const newCorrectAnswer = question.correct_answer.map(ans => {
+                // 如果答案是大写字母（A, B, C, D...），进行映射转换
+                if (/^[A-Z]$/.test(ans)) {
+                    return letterMap[ans] || ans;
+                }
+                // 对于判断题，答案可能是"正确"/"错误"文本，保持不变
+                return ans;
+            });
+
+            return {
+                ...question,
+                options: shuffledOptions.map(opt => opt.text),
+                correct_answer: newCorrectAnswer
+            };
+        },
+
         selectOption(value, index) {
             /* 单选按钮选择并自动保存 */
             if (!this.isAnswerViewed && !this.studyMode) {
                 this.userAnswer[0] = value;
                 this._saveCurrentAnswer();
-                
+
                 // 如果开启了自动显示答案，选择后自动查看答案
                 if (this.autoShowAnswer && !this.isAnswerViewed) {
                     this.viewAnswer();
@@ -546,7 +613,7 @@ createApp({
         },
         
         autoSaveAnswer() {
-            /* 处理填空题/简答题的自动保存 */
+            /* 处理填空题/简答题/论述题/编程题的自动保存 */
             if (!this.studyMode) {
                 this._saveCurrentAnswer();
             }

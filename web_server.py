@@ -90,6 +90,9 @@ class SafeQuestionManager:
                     else:
                         question['type'] = '单选题'
             
+            # 数据标准化：清理HTML、修复答案格式
+            normalize_questions(self.questions)
+            
             self.current_file = safe_path
             return True
         except json.JSONDecodeError:
@@ -148,7 +151,7 @@ class SafeQuestionManager:
         stats = self.get_stats()
         
         # 定义优先题型顺序
-        type_order = ['单选题', '多选题', '判断题', '填空题', '简答题', '释义题']
+        type_order = ['单选题', '多选题', '判断题', '填空题', '简答题', '释义题', '论述题', '编程题']
         
         # 处理优先顺序中的题型
         processed_types = set()
@@ -177,6 +180,89 @@ class SafeQuestionManager:
     def extract_questions_by_count(self, type_counts):
         """根据各题型数量抽取题目（公开方法）"""
         return self._extract_by_counts(type_counts)
+
+def normalize_questions(questions):
+    """标准化题目数据，修复常见兼容性问题"""
+    import re
+    from html import unescape
+
+    def clean_html(text):
+        if not text:
+            return ''
+        text = re.sub(r'<[^>]+>', '', text)
+        text = unescape(text)
+        text = text.replace('&nbsp;', ' ')
+        return text.strip()
+
+    for q in questions:
+        # 1. 清理 HTML 标签
+        if 'content' in q:
+            q['content'] = clean_html(q['content'])
+        if 'analysis' in q:
+            q['analysis'] = clean_html(q['analysis'])
+        if 'options' in q and q['options']:
+            q['options'] = [clean_html(o) for o in q['options']]
+
+        # 2. 判断题：将字母答案映射为选项文本
+        #    支持三种情形：
+        #    a) 选项带字母前缀 ("A 正确", "B 错误") → 按字母查找
+        #    b) 选项纯文本 ("正确", "错误") → 索引映射 A=0, B=1
+        #    c) 答案已是文本 ("正确") → 保持不动
+        if q.get('type') == '判断题' and q.get('correct_answer'):
+            opts = q.get('options', [])
+            new_answers = []
+            for ans in q['correct_answer']:
+                # 情况 c: 答案已经是文本（非单字母），无需映射
+                if ans not in ('A', 'B') or not opts:
+                    new_answers.append(ans)
+                    continue
+                # 情况 a: 优先按字母前缀查找（兼容 A=错误, B=正确 的乱序）
+                found = False
+                for opt in opts:
+                    m_opt = re.match(r'^([A-Za-z])[.、:\s]*(.*)', opt)
+                    if m_opt and m_opt.group(1) == ans:
+                        new_answers.append(m_opt.group(2).strip())
+                        found = True
+                        break
+                if found:
+                    continue
+                # 情况 b: 无字母前缀时，按索引映射（A→0, B→1）
+                idx = 0 if ans == 'A' else 1
+                if idx < len(opts):
+                    opt_text = opts[idx]
+                    m = re.match(r'^[A-Za-z][.、:\s]*(.*)', opt_text)
+                    if m:
+                        opt_text = m.group(1).strip()
+                    new_answers.append(opt_text)
+                else:
+                    new_answers.append(ans)
+            q['correct_answer'] = new_answers
+
+        # 3. 多选题：拆分连续字母答案
+        #    ["ACD"] → ["A", "C", "D"]
+        #    ["A", "C", "D"] 保持不动
+        if q.get('type') == '多选题' and q.get('correct_answer'):
+            new_answers = []
+            for ans in q['correct_answer']:
+                cleaned = ans.replace(',', '').replace('，', '').replace(' ', '')
+                if re.match(r'^[A-Za-z]{2,}$', cleaned):
+                    new_answers.extend(list(cleaned))
+                else:
+                    new_answers.append(ans)
+            q['correct_answer'] = new_answers
+
+        # 4. 填空题：拆分 ^~^ 分隔的多答案
+        if q.get('type') == '填空题' and q.get('correct_answer'):
+            new_answers = []
+            for ans in q['correct_answer']:
+                if '^~^' in ans:
+                    parts = [a.strip() for a in ans.split('^~^') if a.strip()]
+                    new_answers.extend(parts if parts else [ans])
+                else:
+                    new_answers.append(ans)
+            q['correct_answer'] = new_answers
+
+    return questions
 
 # 初始化安全的题库管理器
 safe_manager = SafeQuestionManager()
@@ -323,7 +409,7 @@ def submit_exam():
             is_correct = False
             if question['type'] in ['单选题', '判断题', '多选题', '选择题']:
                 is_correct = set(user_answer) == set(correct_answer)
-            elif question['type'] in ['填空题', '简答题', '释义题']:
+            elif question['type'] in ['填空题', '简答题', '释义题', '论述题', '编程题']:
                 if len(user_answer) == len(correct_answer):
                     is_all_correct = True
                     for ua, ca in zip(user_answer, correct_answer):
