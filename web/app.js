@@ -35,7 +35,16 @@ createApp({
             localQuestions: [], // 本地存储的题目数据
             localAnswers: {}, // 本地存储的用户答案
             localViewedAnswers: {}, // 本地存储的已查看答案状态
-            isDarkMode: false // 深色模式
+            isDarkMode: false, // 深色模式
+            questionTransitionName: 'question-slide-next',
+            questionRenderKey: 0,
+            touchGesture: {
+                startX: 0,
+                startY: 0,
+                deltaX: 0,
+                deltaY: 0,
+                active: false
+            }
         };
     },
     computed: {
@@ -115,6 +124,12 @@ createApp({
                 }
             }
             return wrong;
+        },
+        canGoPrev() {
+            return this.currentIndex > 0;
+        },
+        canGoNext() {
+            return this.currentIndex < this.totalQuestions - 1;
         }
     },
     async created() {
@@ -276,6 +291,8 @@ createApp({
                     this.localViewedAnswers = {}; // 初始化本地已查看答案状态
                     this.step = 'answer';
                     this.currentIndex = 0;
+                    this.questionTransitionName = 'question-slide-next';
+                    this.questionRenderKey++;
                     this.loadCurrentQuestion();
                     this.showNotification('题目抽取成功', 'success');
                 } else {
@@ -371,17 +388,11 @@ createApp({
         },
         
         prevQuestion() {
-            if (this.currentIndex > 0) {
-                this.currentIndex--;
-                this.loadCurrentQuestion();
-            }
+            this.navigateToQuestion(this.currentIndex - 1, 'prev');
         },
         
         nextQuestion() {
-            if (this.currentIndex < this.totalQuestions - 1) {
-                this.currentIndex++;
-                this.loadCurrentQuestion();
-            }
+            this.navigateToQuestion(this.currentIndex + 1, 'next');
         },
         
         submitExam() {
@@ -534,10 +545,87 @@ createApp({
         jumpToQuestion(index) {
             /* 跳转到指定题目 */
             this.answerSheet.show = false;
-            this.currentIndex = index;
+            const direction = index >= this.currentIndex ? 'next' : 'prev';
+            this.navigateToQuestion(index, direction);
+        },
+
+        navigateToQuestion(targetIndex, direction = 'next') {
+            /* 统一处理切题入口，复用按钮/答题卡/滑动动画 */
+            if (targetIndex < 0 || targetIndex >= this.totalQuestions || targetIndex === this.currentIndex) {
+                return;
+            }
+
+            this.questionTransitionName = direction === 'prev'
+                ? 'question-slide-prev'
+                : 'question-slide-next';
+            this.currentIndex = targetIndex;
+            this.questionRenderKey++;
             this.loadCurrentQuestion();
         },
-        
+
+        onQuestionTouchStart(event) {
+            if (!event.touches || event.touches.length !== 1) {
+                return;
+            }
+
+            const interactiveTarget = event.target.closest('input, textarea, button, label');
+            const codePreviewTarget = event.target.closest('.code-preview, .code-container, .code-content, .line-numbers');
+            if (interactiveTarget) {
+                this.touchGesture.active = false;
+                return;
+            }
+            if (codePreviewTarget) {
+                this.touchGesture.active = false;
+                return;
+            }
+
+            const touch = event.touches[0];
+            this.touchGesture = {
+                startX: touch.clientX,
+                startY: touch.clientY,
+                deltaX: 0,
+                deltaY: 0,
+                active: true
+            };
+        },
+
+        onQuestionTouchMove(event) {
+            if (!this.touchGesture.active || !event.touches || event.touches.length !== 1) {
+                return;
+            }
+
+            const touch = event.touches[0];
+            this.touchGesture.deltaX = touch.clientX - this.touchGesture.startX;
+            this.touchGesture.deltaY = touch.clientY - this.touchGesture.startY;
+        },
+
+        onQuestionTouchEnd() {
+            if (!this.touchGesture.active) {
+                return;
+            }
+
+            const { deltaX, deltaY } = this.touchGesture;
+            const absX = Math.abs(deltaX);
+            const absY = Math.abs(deltaY);
+            const minSwipeDistance = 70;
+
+            this.touchGesture.active = false;
+
+            if (absX < minSwipeDistance || absX <= absY) {
+                return;
+            }
+
+            if (deltaX < 0) {
+                this.nextQuestion();
+            } else {
+                this.prevQuestion();
+            }
+        },
+
+        onQuestionTouchCancel() {
+            this.touchGesture.active = false;
+        },
+
         getCardClasses(question) {
             /* 获取题目卡片 CSS 类名 */
             const classes = [];
@@ -638,15 +726,9 @@ createApp({
             }
         },
         
-        selectMultipleOption(value, optionIndex) {
-            /* 多选按钮选择并自动保存 */
+        handleMultipleAnswerChange() {
+            /* 多选题由 checkbox v-model 驱动，变更后统一保存 */
             if (!this.isAnswerViewed && !this.studyMode) {
-                const index = this.userAnswer.indexOf(value);
-                if (index === -1) {
-                    this.userAnswer.push(value);
-                } else {
-                    this.userAnswer.splice(index, 1);
-                }
                 this._saveCurrentAnswer();
             }
         },
@@ -705,6 +787,97 @@ createApp({
                 console.error(`生成错题本失败: ${error.message}`);
                 this.showNotification('生成错题本失败', 'error');
             }
+        },
+        
+        // 代码高亮相关方法
+         normalizeCode(code) {
+             /* 标准化代码：将中文全角括号转换为标准尖括号 */
+             if (!code) return '';
+             return code.replace(/《/g, '<').replace(/》/g, '>');
+         },
+         
+         highlightCode(code, language = 'javascript') {
+             /* 使用 TextMate 规则进行语法高亮 */
+             if (!code) return '';
+             
+             // 先标准化代码
+             code = this.normalizeCode(code);
+             
+             // 使用 SyntaxHighlighter 进行高亮（同步版本）
+             return SyntaxHighlighter.highlightSimple(code, language);
+         },
+        
+        detectLanguage(content) {
+            /* 检测代码语言 */
+            if (!content) return 'plaintext';
+            
+            const lowerContent = content.toLowerCase();
+            
+            if (lowerContent.includes('def ') || lowerContent.includes('import ') || lowerContent.includes('print(')) {
+                return 'python';
+            } else if (lowerContent.includes('function ') || lowerContent.includes('const ') || lowerContent.includes('let ')) {
+                return 'javascript';
+            } else if (lowerContent.includes('public class') || lowerContent.includes('private ') || lowerContent.includes('@controller') || lowerContent.includes('@requestmapping') || lowerContent.includes('system.out')) {
+                return 'java';
+            } else if (lowerContent.includes('#include') && (lowerContent.includes('printf') || lowerContent.includes('scanf'))) {
+                return 'c';
+            } else if (lowerContent.includes('#include') && (lowerContent.includes('std::') || lowerContent.includes('cout') || lowerContent.includes('cin'))) {
+                return 'cpp';
+            } else if (lowerContent.includes('<html') || lowerContent.includes('<!doctype') || lowerContent.includes('<div') || lowerContent.includes('<body') || lowerContent.includes('<form')) {
+                return 'html';
+            } else if (lowerContent.includes('{') && lowerContent.includes(':') && (lowerContent.includes('color') || lowerContent.includes('margin') || lowerContent.includes('padding'))) {
+                return 'css';
+            }
+            
+            return 'plaintext';
+        },
+        
+        getCodeLanguageIcon(language) {
+            /* 获取语言图标 */
+            const icons = {
+                'python': '🐍',
+                'javascript': '📜',
+                'java': '☕',
+                'c': '⚙️',
+                'cpp': '⚙️',
+                'html': '🌐',
+                'css': '🎨',
+                'plaintext': '📄'
+            };
+            return icons[language] || '📄';
+        },
+        
+        copyCode(code) {
+            /* 复制代码到剪贴板 */
+            // 先标准化代码
+            code = this.normalizeCode(code);
+            
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(code).then(() => {
+                    this.showNotification('代码已复制到剪贴板', 'success');
+                }).catch(() => {
+                    this.fallbackCopy(code);
+                });
+            } else {
+                this.fallbackCopy(code);
+            }
+        },
+        
+        fallbackCopy(code) {
+            /* 降级复制方法 */
+            const textarea = document.createElement('textarea');
+            textarea.value = code;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                this.showNotification('代码已复制到剪贴板', 'success');
+            } catch (err) {
+                this.showNotification('复制失败，请手动复制', 'error');
+            }
+            document.body.removeChild(textarea);
         }
     }
 }).mount('#app');

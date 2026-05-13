@@ -6,6 +6,7 @@
     <title>哈基扬在线答题系统</title>
     <link rel="stylesheet" href="style.css">
     <script src="vue.global.js"></script>
+    <script src="syntax_highlighter.js"></script>
 </head>
 <body>
     <div id="app">
@@ -143,144 +144,192 @@
             </div>
 
             <!-- 题目卡片 -->
-            <div v-if="currentQuestion" class="question">
-                <div class="question-header">
-                    <h2>题目 {{ currentIndex + 1 }}</h2>
-                    <span class="question-type">{{ currentQuestion.type }}</span>
-                </div>
-                <div class="question-content">{{ currentQuestion.content }}</div>
+            <div class="question-swipe-zone">
+                <Transition
+                    :name="questionTransitionName"
+                >
+                    <div
+                        v-if="currentQuestion"
+                        :key="questionRenderKey"
+                        class="question"
+                        @touchstart.passive="onQuestionTouchStart"
+                        @touchmove.passive="onQuestionTouchMove"
+                        @touchend="onQuestionTouchEnd"
+                        @touchcancel="onQuestionTouchCancel"
+                    >
+                        <div class="question-header">
+                            <h2>题目 {{ currentIndex + 1 }}</h2>
+                            <span class="question-type">{{ currentQuestion.type }}</span>
+                        </div>
+                        <div class="question-content">{{ currentQuestion.content }}</div>
 
-                <!-- 选项 -->
-                <div v-if="currentQuestion.options && currentQuestion.options.length > 0" class="options">
-                    <!-- 判断题单独处理 -->
-                    <div v-if="currentQuestion.type === '判断题'">
-                        <div 
-                            v-for="(option, index) in currentQuestion.options" 
-                            :key="index" 
-                            class="option-item"
-                            @click="selectOption(option, index)"
-                        >
-                            <input 
-                                type="radio" 
-                                :id="'option-' + index" 
-                                :value="option" 
-                                v-model="userAnswer[0]"
-                                :disabled="isAnswerViewed || studyMode"
-                            >
-                            <label 
-                                :for="'option-' + index" 
-                                :class="{
-                                    'correct': isAnswerViewed && correctAnswer.includes(option),
-                                    'incorrect': isAnswerViewed && userAnswer.includes(option) && !correctAnswer.includes(option)
-                                }"
-                            >
-                                {{ option }}
-                            </label>
+                        <!-- 选项 -->
+                        <div v-if="currentQuestion.options && currentQuestion.options.length > 0" class="options">
+                            <!-- 判断题单独处理 -->
+                            <div v-if="currentQuestion.type === '判断题'">
+                                <div 
+                                    v-for="(option, index) in currentQuestion.options" 
+                                    :key="index" 
+                                    class="option-item"
+                                    @click="selectOption(option, index)"
+                                >
+                                    <input 
+                                        type="radio" 
+                                        :id="'option-' + index" 
+                                        :value="option" 
+                                        v-model="userAnswer[0]"
+                                        :disabled="isAnswerViewed || studyMode"
+                                    >
+                                    <label 
+                                        :for="'option-' + index" 
+                                        :class="{
+                                            'correct': isAnswerViewed && correctAnswer.includes(option),
+                                            'incorrect': isAnswerViewed && userAnswer.includes(option) && !correctAnswer.includes(option)
+                                        }"
+                                    >
+                                        {{ option }}
+                                    </label>
+                                </div>
+                            </div>
+                            <!-- 单选题处理 -->
+                            <div v-else-if="currentQuestion.type === '单选题'">
+                                <div
+                                    v-for="(option, index) in currentQuestion.options"
+                                    :key="index"
+                                    class="option-item"
+                                    @click="selectOption(getOptionLetter(index), index)"
+                                >
+                                    <input
+                                        type="radio"
+                                        :id="'option-' + index"
+                                        :value="getOptionLetter(index)"
+                                        v-model="userAnswer[0]"
+                                        :disabled="isAnswerViewed || studyMode"
+                                    >
+                                    <label
+                                        :for="'option-' + index"
+                                        :class="{
+                                            'correct': isAnswerViewed && correctAnswer.includes(getOptionLetter(index)),
+                                            'incorrect': isAnswerViewed && userAnswer.includes(getOptionLetter(index)) && !correctAnswer.includes(getOptionLetter(index))
+                                        }"
+                                    >
+                                        {{ getOptionLetter(index) }}. {{ option }}
+                                    </label>
+                                </div>
+                            </div>
+                            <div v-else-if="currentQuestion.type === '多选题'">
+                                <div
+                                    v-for="(option, index) in currentQuestion.options"
+                                    :key="index"
+                                    class="option-item"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        :id="'option-' + index"
+                                        :value="getOptionLetter(index)"
+                                        v-model="userAnswer"
+                                        @change="handleMultipleAnswerChange"
+                                        :disabled="isAnswerViewed || studyMode"
+                                    >
+                                    <label
+                                        :for="'option-' + index"
+                                        :class="{
+                                            'correct': isAnswerViewed && correctAnswer.includes(getOptionLetter(index)),
+                                            'incorrect': isAnswerViewed && userAnswer.includes(getOptionLetter(index)) && !correctAnswer.includes(getOptionLetter(index))
+                                        }"
+                                    >
+                                        {{ getOptionLetter(index) }}. {{ option }}
+                                    </label>
+                                </div>
+                            </div>
+                            <!-- 多选题提交按钮 -->
+                            <div v-if="currentQuestion.type === '多选题' && !isAnswerViewed && !studyMode" class="submit-answer-section">
+                                <button @click="submitAnswer" class="btn btn-primary">确定</button>
+                            </div>
                         </div>
-                    </div>
-                    <!-- 单选题处理 -->
-                    <div v-else-if="currentQuestion.type === '单选题'">
-                        <div
-                            v-for="(option, index) in currentQuestion.options"
-                            :key="index"
-                            class="option-item"
-                            @click="selectOption(getOptionLetter(index), index)"
-                        >
-                            <input
-                                type="radio"
-                                :id="'option-' + index"
-                                :value="getOptionLetter(index)"
-                                v-model="userAnswer[0]"
-                                :disabled="isAnswerViewed || studyMode"
-                            >
-                            <label
-                                :for="'option-' + index"
-                                :class="{
-                                    'correct': isAnswerViewed && correctAnswer.includes(getOptionLetter(index)),
-                                    'incorrect': isAnswerViewed && userAnswer.includes(getOptionLetter(index)) && !correctAnswer.includes(getOptionLetter(index))
-                                }"
-                            >
-                                {{ getOptionLetter(index) }}. {{ option }}
-                            </label>
-                        </div>
-                    </div>
-                    <div v-else-if="currentQuestion.type === '多选题'">
-                        <div
-                            v-for="(option, index) in currentQuestion.options"
-                            :key="index"
-                            class="option-item"
-                            @click="selectMultipleOption(getOptionLetter(index), index)"
-                        >
-                            <input
-                                type="checkbox"
-                                :id="'option-' + index"
-                                :value="getOptionLetter(index)"
-                                :checked="userAnswer.includes(getOptionLetter(index))"
-                                :disabled="isAnswerViewed || studyMode"
-                            >
-                            <label
-                                :for="'option-' + index"
-                                :class="{
-                                    'correct': isAnswerViewed && correctAnswer.includes(getOptionLetter(index)),
-                                    'incorrect': isAnswerViewed && userAnswer.includes(getOptionLetter(index)) && !correctAnswer.includes(getOptionLetter(index))
-                                }"
-                            >
-                                {{ getOptionLetter(index) }}. {{ option }}
-                            </label>
-                        </div>
-                    </div>
-                    <!-- 多选题提交按钮 -->
-                    <div v-if="currentQuestion.type === '多选题' && !isAnswerViewed && !studyMode" class="submit-answer-section">
-                        <button @click="submitAnswer" class="btn btn-primary">确定</button>
-                    </div>
-                </div>
 
-                <!-- 填空题/简答题/释义题/论述题/编程题 -->
-                <div v-else-if="['填空题', '简答题', '释义题', '论述题', '编程题'].includes(currentQuestion.type)" class="input-answer">
-                    <!-- 填空题使用单行文本框 -->
-                    <div v-for="(answer, index) in userAnswer" :key="index" class="input-item" v-if="currentQuestion.type === '填空题'">
-                        <input 
-                            type="text" 
-                            v-model="userAnswer[index]" 
-                            :placeholder="'请输入第' + (index + 1) + '个空的答案'"
-                            :disabled="isAnswerViewed || studyMode"
-                            @input="autoSaveAnswer"
-                            @change="autoSaveAnswer"
-                        >
-                    </div>
-                    <!-- 简答题/释义题/论述题/编程题使用多行文本框 -->
-                    <div v-for="(answer, index) in userAnswer" :key="index" class="input-item" v-else>
-                        <textarea 
-                            v-model="userAnswer[index]" 
-                            :placeholder="'请输入第' + (index + 1) + '题的答案'"
-                            :disabled="isAnswerViewed || studyMode"
-                            @input="autoSaveAnswer"
-                            @change="autoSaveAnswer"
-                        ></textarea>
-                    </div>
-                    <!-- 填空题/简答题等提交按钮 -->
-                    <div v-if="!isAnswerViewed && !studyMode" class="submit-answer-section">
-                        <button @click="submitAnswer" class="btn btn-primary">确定</button>
-                    </div>
-                    <!-- 显示正确答案 -->
-                    <div v-if="isAnswerViewed" class="correct-answer">
-                        <h3>正确答案：</h3>
-                        <div v-for="(answer, index) in correctAnswer" :key="index" class="correct-answer-item">
-                            {{ answer }}
+                        <!-- 填空题/简答题/释义题/论述题/编程题 -->
+                        <div v-else-if="['填空题', '简答题', '释义题', '论述题', '编程题'].includes(currentQuestion.type)" class="input-answer">
+                            <!-- 填空题使用单行文本框 -->
+                            <div v-for="(answer, index) in userAnswer" :key="index" class="input-item" v-if="currentQuestion.type === '填空题'">
+                                <input 
+                                    type="text" 
+                                    v-model="userAnswer[index]" 
+                                    :placeholder="'请输入第' + (index + 1) + '个空的答案'"
+                                    :disabled="isAnswerViewed || studyMode"
+                                    @input="autoSaveAnswer"
+                                    @change="autoSaveAnswer"
+                                >
+                            </div>
+                            <!-- 简答题/释义题/论述题/编程题使用多行文本框 -->
+                            <div v-for="(answer, index) in userAnswer" :key="index" class="input-item" v-else>
+                                <textarea 
+                                    v-model="userAnswer[index]" 
+                                    :placeholder="'请输入第' + (index + 1) + '题的答案'"
+                                    :disabled="isAnswerViewed || studyMode"
+                                    @input="autoSaveAnswer"
+                                    @change="autoSaveAnswer"
+                                ></textarea>
+                            </div>
+                            <!-- 编程题代码预览框 -->
+                    <div v-if="currentQuestion.type === '编程题' && isAnswerViewed && currentQuestion.correct_answer && currentQuestion.correct_answer.length > 0" class="code-answer">
+                        <h3>参考答案：</h3>
+                        <div v-for="(answer, index) in currentQuestion.correct_answer" :key="index" class="code-preview-wrapper">
+                            <div v-if="answer.trim()" class="code-preview">
+                                <div class="code-header">
+                                    <div class="code-language">
+                                        <span>{{ getCodeLanguageIcon(detectLanguage(normalizeCode(answer))) }}</span>
+                                        <span>{{ detectLanguage(normalizeCode(answer)) }}</span>
+                                    </div>
+                                    <div class="code-actions">
+                                        <button @click="copyCode(answer)" class="code-btn">复制代码</button>
+                                    </div>
+                                </div>
+                                <div class="code-container">
+                                    <div class="line-numbers">
+                                        <span v-for="(line, lineIndex) in normalizeCode(answer).split('\n')" :key="lineIndex" class="line-number">{{ lineIndex + 1 }}</span>
+                                    </div>
+                                    <div class="code-content" v-html="highlightCode(normalizeCode(answer), detectLanguage(normalizeCode(answer)))"></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
+                            <!-- 填空题/简答题等提交按钮 -->
+                            <div v-if="!isAnswerViewed && !studyMode" class="submit-answer-section">
+                                <button @click="submitAnswer" class="btn btn-primary">确定</button>
+                            </div>
+                            <!-- 显示正确答案（非编程题） -->
+                            <div v-if="isAnswerViewed && currentQuestion.type !== '编程题'" class="correct-answer">
+                                <h3>正确答案：</h3>
+                                <div v-for="(answer, index) in correctAnswer" :key="index" class="correct-answer-item">
+                                    {{ answer }}
+                                </div>
+                            </div>
+                            <!-- 显示正确答案（编程题的其他答案说明） -->
+                            <div v-if="isAnswerViewed && currentQuestion.type === '编程题' && correctAnswer.length > 0" class="correct-answer">
+                                <h3>答案说明：</h3>
+                                <div v-for="(answer, index) in correctAnswer" :key="index" class="correct-answer-item">
+                                    {{ answer }}
+                                </div>
+                            </div>
+                        </div>
 
-                <!-- 答案解析 -->
-                <div v-if="isAnswerViewed && currentQuestion.analysis" class="analysis">
-                    <h3>答案解析：</h3>
-                    <p>{{ currentQuestion.analysis }}</p>
+                        <!-- 答案解析 -->
+                        <div v-if="isAnswerViewed && currentQuestion.analysis" class="analysis">
+                            <h3>答案解析：</h3>
+                            <p>{{ currentQuestion.analysis }}</p>
+                        </div>
+                    </div>
+                </Transition>
+                <div class="question-swipe-hint">
+                    <span :class="{ 'disabled': !canGoPrev }"></span>
+                    <span :class="{ 'disabled': !canGoNext }"></span>
                 </div>
             </div>
 
             <div class="navigation">
                 <div class="nav-left">
-                    <button @click="prevQuestion" class="btn btn-secondary nav-btn" :disabled="currentIndex === 0">
+                    <button @click="prevQuestion" class="btn btn-secondary nav-btn" :disabled="!canGoPrev">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                             <polyline points="15 18 9 12 15 6"/>
                         </svg>
@@ -304,7 +353,7 @@
                     </button>
                 </div>
                 <div class="nav-right">
-                    <button @click="nextQuestion" class="btn btn-secondary nav-btn" :disabled="currentIndex === totalQuestions - 1">
+                    <button @click="nextQuestion" class="btn btn-secondary nav-btn" :disabled="!canGoNext">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                             <polyline points="9 18 15 12 9 6"/>
                         </svg>

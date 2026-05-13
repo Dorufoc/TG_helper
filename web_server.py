@@ -3,7 +3,7 @@ import json
 import random
 import logging
 import datetime
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, session
 from flask_cors import CORS
 
 # 配置日志系统
@@ -35,20 +35,19 @@ if not os.path.exists(PAPER_JSON_DIR):
     logger.info(f'创建题库目录: {PAPER_JSON_DIR}')
 
 app = Flask(__name__, static_folder='web', static_url_path='')
-CORS(app, resources={r"/*": {"origins": "*"}})  # 允许所有跨域请求
+
+# Session配置
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production-12345')
+app.config['SESSION_COOKIE_NAME'] = 'tg_helper_session'
+app.config['SESSION_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # 确保静态资源能够被正确访问
 @app.route('/<path:path>')
 def serve_static(path):
     return send_from_directory(app.static_folder, path)
-
-# 全局变量管理题库和用户会话
-question_manager = {
-    'questions': [],
-    'selected_questions': [],
-    'user_answers': {},
-    'viewed_answers': {}
-}
 
 class SafeQuestionManager:
     """安全的题库管理类，防止跨目录访问和代码注入"""
@@ -196,9 +195,23 @@ def normalize_questions(questions):
     def clean_html(text):
         if not text:
             return ''
-        text = re.sub(r'<[^>]+>', '', text)
-        text = unescape(text)
-        text = text.replace('&nbsp;', ' ')
+        text = unescape(str(text)).replace('\r\n', '\n').replace('\r', '\n')
+        text = text.replace('\xa0', ' ').replace('&nbsp;', ' ')
+
+        # 只清理明确的 HTML 标签，避免误删题目中的 <T>、<bean>、<url-pattern> 等文本内容
+        text = re.sub(r'<!--.*?-->', '', text, flags=re.S)
+        text = re.sub(r'<\s*br\s*/?\s*>', '\n', text, flags=re.I)
+        text = re.sub(r'<\s*/\s*(?:p|div|li|tr|h[1-6]|section|article)\s*>', '\n', text, flags=re.I)
+        text = re.sub(
+            r'<\s*/?\s*(?:html|body|p|div|span|strong|em|b|i|u|small|sub|sup|code|pre|blockquote|'
+            r'ul|ol|li|table|thead|tbody|tfoot|tr|td|th|h[1-6]|section|article|a)\b[^>]*>',
+            '',
+            text,
+            flags=re.I,
+        )
+
+        text = re.sub(r'[ \t\f\v]+', ' ', text)
+        text = re.sub(r'\n{3,}', '\n\n', text)
         return text.strip()
 
     for q in questions:
@@ -329,23 +342,22 @@ def extract_questions():
             logger.error('题型数量必须是对象格式')
             return jsonify({'success': False, 'message': '题型数量必须是对象格式'}), 400
         
-        # 验证题型数量
         for count in type_counts.values():
             if not isinstance(count, int) or count < 0:
                 logger.error('题型数量必须是非负整数')
                 return jsonify({'success': False, 'message': '题型数量必须是非负整数'}), 400
         
-        # 重置用户会话
-        # 直接传递type_counts作为各题型的数量
-        question_manager['selected_questions'] = safe_manager.extract_questions_by_count(type_counts)
-        question_manager['user_answers'] = {}
-        question_manager['viewed_answers'] = {}
+        selected_questions = safe_manager.extract_questions_by_count(type_counts)
+        
+        session['selected_questions'] = selected_questions
+        session['user_answers'] = {}
+        session['viewed_answers'] = {}
         
         return jsonify({
             'success': True,
             'message': '题目抽取成功',
-            'questions_count': len(question_manager['selected_questions']),
-            'questions': question_manager['selected_questions']  # 返回完整题目数据
+            'questions_count': len(selected_questions),
+            'questions': selected_questions
         })
     except ValueError as e:
         logger.error(f'抽取题目参数错误: {str(e)}')
@@ -358,10 +370,13 @@ def extract_questions():
 def get_question(index):
     """获取指定索引的题目"""
     try:
-        if 0 <= index < len(question_manager['selected_questions']):
-            question = question_manager['selected_questions'][index]
-            user_answer = question_manager['user_answers'].get(index, [])
-            is_answer_viewed = question_manager['viewed_answers'].get(index, False)
+        selected_questions = session.get('selected_questions', [])
+        if 0 <= index < len(selected_questions):
+            question = selected_questions[index]
+            user_answers = session.get('user_answers', {})
+            viewed_answers = session.get('viewed_answers', {})
+            user_answer = user_answers.get(index, [])
+            is_answer_viewed = viewed_answers.get(index, False)
             
             return jsonify({
                 'success': True,
@@ -389,8 +404,11 @@ def save_answer(index):
     answer = data.get('answer', [])
     
     try:
-        if 0 <= index < len(question_manager['selected_questions']):
-            question_manager['user_answers'][index] = answer
+        selected_questions = session.get('selected_questions', [])
+        if 0 <= index < len(selected_questions):
+            if 'user_answers' not in session:
+                session['user_answers'] = {}
+            session['user_answers'][index] = answer
             return jsonify({'success': True, 'message': '答案保存成功'})
         else:
             logger.error(f'题目索引无效: {index}')
@@ -403,16 +421,22 @@ def save_answer(index):
 def submit_exam():
     """提交考试，计算成绩并返回错题信息"""
     try:
-        total_questions = len(question_manager['selected_questions'])
+        selected_questions = session.get('selected_questions', [])
+        user_answers = session.get('user_answers', {})
+        
+        if not selected_questions:
+            logger.error('没有可提交的题目')
+            return jsonify({'success': False, 'message': '没有可提交的题目'}), 400
+        
+        total_questions = len(selected_questions)
         correct_count = 0
         wrong_questions = []
         
         for i in range(total_questions):
-            question = question_manager['selected_questions'][i]
-            user_answer = question_manager['user_answers'].get(i, [])
+            question = selected_questions[i]
+            user_answer = user_answers.get(i, [])
             correct_answer = question['correct_answer']
             
-            # 根据题型检查答案是否正确
             is_correct = False
             if question['type'] in ['单选题', '判断题', '多选题', '选择题']:
                 is_correct = set(user_answer) == set(correct_answer)
@@ -428,7 +452,6 @@ def submit_exam():
             if is_correct:
                 correct_count += 1
             else:
-                # 收集错题信息
                 wrong_question = {
                     'id': i + 1,
                     'type': question['type'],
@@ -440,7 +463,6 @@ def submit_exam():
                 }
                 wrong_questions.append(wrong_question)
         
-        # 计算得分（满分100）
         score = round((correct_count / total_questions) * 100, 1) if total_questions > 0 else 0
         
         return jsonify({
@@ -458,9 +480,12 @@ def submit_exam():
 def view_answer(index):
     """查看答案"""
     try:
-        if 0 <= index < len(question_manager['selected_questions']):
-            question_manager['viewed_answers'][index] = True
-            question = question_manager['selected_questions'][index]
+        selected_questions = session.get('selected_questions', [])
+        if 0 <= index < len(selected_questions):
+            if 'viewed_answers' not in session:
+                session['viewed_answers'] = {}
+            session['viewed_answers'][index] = True
+            question = selected_questions[index]
             
             return jsonify({
                 'success': True,
@@ -550,19 +575,20 @@ def save_wrong_questions():
 def generate_wrong_book():
     """根据错题序号和作答内容生成错题集"""
     try:
-        # 获取JSON数据
         data = request.get_json()
         if not data:
             return jsonify({'success': False, 'message': '请求体不是有效的JSON格式'}), 400
         
-        # 获取错题序号和作答内容
         wrong_indices = data.get('wrong_indices', [])
         user_answers = data.get('user_answers', {})
         
         if not wrong_indices:
             return jsonify({'success': False, 'message': '没有错题序号可以处理'}), 400
         
-        # 确保错题本目录存在
+        selected_questions = session.get('selected_questions', [])
+        if not selected_questions:
+            return jsonify({'success': False, 'message': '没有可用的题目数据'}), 400
+        
         if not os.path.exists(WRONG_QUESTIONS_DIR):
             try:
                 os.makedirs(WRONG_QUESTIONS_DIR)
@@ -571,13 +597,11 @@ def generate_wrong_book():
                 logger.error(f'创建错题本目录失败: {str(e)}')
                 return jsonify({'success': False, 'message': f'创建错题本目录失败: {str(e)}'}), 500
         
-        # 从本地完整题库中获取错题
         wrong_questions = []
         for index in wrong_indices:
-            # 转换为0-based索引
             question_index = index - 1
-            if 0 <= question_index < len(question_manager['selected_questions']):
-                question = question_manager['selected_questions'][question_index]
+            if 0 <= question_index < len(selected_questions):
+                question = selected_questions[question_index]
                 user_answer = user_answers.get(str(index), [])
                 wrong_question = {
                     'id': index,
@@ -590,12 +614,10 @@ def generate_wrong_book():
                 }
                 wrong_questions.append(wrong_question)
         
-        # 生成时间戳文件名
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         file_name = f'错题本_{timestamp}.json'
         file_path = os.path.join(WRONG_QUESTIONS_DIR, file_name)
         
-        # 准备错题本数据
         wrong_book = {
             'title': '错题本',
             'generated_at': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -603,7 +625,6 @@ def generate_wrong_book():
             'questions': wrong_questions
         }
         
-        # 保存到文件
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(wrong_book, f, ensure_ascii=False, indent=2)
         
@@ -651,6 +672,13 @@ def get_available_wrong_books():
     except Exception as e:
         logger.error(f'获取错题本列表失败: {str(e)}')
         return jsonify({'success': False, 'message': f'获取错题本列表失败: {str(e)}'}), 500
+
+@app.route('/syntax/<path:filename>')
+def serve_syntax_file(filename):
+    """提供语法高亮规则文件"""
+    from flask import send_from_directory
+    syntax_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'syntax')
+    return send_from_directory(syntax_dir, filename)
 
 @app.route('/')
 def index():
