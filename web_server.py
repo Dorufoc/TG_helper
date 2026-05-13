@@ -28,6 +28,12 @@ logger = logging.getLogger(__name__)
 # 获取当前脚本所在目录的绝对路径
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
+# 题库JSON文件目录
+PAPER_JSON_DIR = os.path.join(BASE_DIR, 'paper_json')
+if not os.path.exists(PAPER_JSON_DIR):
+    os.makedirs(PAPER_JSON_DIR)
+    logger.info(f'创建题库目录: {PAPER_JSON_DIR}')
+
 app = Flask(__name__, static_folder='web', static_url_path='')
 CORS(app, resources={r"/*": {"origins": "*"}})  # 允许所有跨域请求
 
@@ -52,22 +58,23 @@ class SafeQuestionManager:
         self.current_file = None
     
     def get_available_files(self):
-        """获取BASE_DIR下所有可用的JSON题库文件"""
+        """获取paper_json目录下所有可用的JSON题库文件"""
         try:
             files = []
-            for filename in os.listdir(BASE_DIR):
-                if filename.endswith('.json'):
-                    files.append(filename)
+            if os.path.exists(PAPER_JSON_DIR):
+                for filename in os.listdir(PAPER_JSON_DIR):
+                    if filename.endswith('.json'):
+                        files.append(filename)
             return files
         except Exception as e:
-            print(f"获取可用文件失败: {e}")
+            logger.error(f"获取可用文件失败: {e}")
             return []
     
     def load_questions(self, file_path):
-        """安全加载题库文件，仅允许访问BASE_DIR下的JSON文件"""
-        # 确保文件路径在BASE_DIR内
-        safe_path = os.path.abspath(os.path.join(BASE_DIR, file_path))
-        if not safe_path.startswith(BASE_DIR):
+        """安全加载题库文件，仅允许访问PAPER_JSON_DIR下的JSON文件"""
+        # 确保文件路径在PAPER_JSON_DIR内
+        safe_path = os.path.abspath(os.path.join(PAPER_JSON_DIR, file_path))
+        if not safe_path.startswith(PAPER_JSON_DIR):
             raise ValueError("非法文件路径，禁止跨目录访问")
         
         # 确保只加载JSON文件
@@ -100,7 +107,7 @@ class SafeQuestionManager:
         except PermissionError:
             raise ValueError("没有权限访问该文件")
         except Exception as e:
-            print(f"加载题库失败: {e}")
+            logger.error(f"加载题库失败: {e}")
             return False
     
     def get_stats(self):

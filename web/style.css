@@ -1,585 +1,2302 @@
-/* 全局样式 */
-* {
+/* ========================================
+   MD3 Design System - Material Design 3
+   Complete Token System & Component Library
+   ======================================== */
+
+/* ========================================
+   1. Design Tokens
+   ======================================== */
+:root {
+    /* --- Color: Primary --- */
+    --md-ref-palette-primary0: #000000;
+    --md-ref-palette-primary10: #21005D;
+    --md-ref-palette-primary20: #381E72;
+    --md-ref-palette-primary30: #4F378B;
+    --md-ref-palette-primary40: #6750A4;
+    --md-ref-palette-primary50: #7F67BE;
+    --md-ref-palette-primary60: #9A82DB;
+    --md-ref-palette-primary70: #B69DF8;
+    --md-ref-palette-primary80: #D0BCFF;
+    --md-ref-palette-primary90: #EADDFF;
+    --md-ref-palette-primary95: #F6EDFF;
+    --md-ref-palette-primary99: #FFFBFE;
+    --md-ref-palette-primary100: #FFFFFF;
+
+    /* --- Color: Secondary --- */
+    --md-ref-palette-secondary10: #1D192B;
+    --md-ref-palette-secondary20: #332D41;
+    --md-ref-palette-secondary30: #4A4458;
+    --md-ref-palette-secondary40: #625B71;
+    --md-ref-palette-secondary50: #7A7289;
+    --md-ref-palette-secondary60: #958DA5;
+    --md-ref-palette-secondary70: #B0A7C0;
+    --md-ref-palette-secondary80: #CCC2DC;
+    --md-ref-palette-secondary90: #E8DEF8;
+    --md-ref-palette-secondary95: #F6EDFF;
+    --md-ref-palette-secondary99: #FFFBFE;
+
+    /* --- Color: Tertiary --- */
+    --md-ref-palette-tertiary10: #31111D;
+    --md-ref-palette-tertiary20: #492532;
+    --md-ref-palette-tertiary30: #633B48;
+    --md-ref-palette-tertiary40: #7D5260;
+    --md-ref-palette-tertiary50: #986977;
+    --md-ref-palette-tertiary60: #B58392;
+    --md-ref-palette-tertiary70: #D29DAC;
+    --md-ref-palette-tertiary80: #EFB8C8;
+    --md-ref-palette-tertiary90: #FFD8E4;
+    --md-ref-palette-tertiary95: #FFECF0;
+    --md-ref-palette-tertiary99: #FFFBFE;
+
+    /* --- Color: Error --- */
+    --md-ref-palette-error10: #410E0B;
+    --md-ref-palette-error20: #601410;
+    --md-ref-palette-error30: #8C1D18;
+    --md-ref-palette-error40: #B3261E;
+    --md-ref-palette-error50: #DC362E;
+    --md-ref-palette-error60: #E46962;
+    --md-ref-palette-error70: #EC928E;
+    --md-ref-palette-error80: #F2B8B5;
+    --md-ref-palette-error90: #F9DEDC;
+    --md-ref-palette-error95: #FCEEEE;
+    --md-ref-palette-error99: #FFFBFE;
+
+    /* --- Color: Neutral --- */
+    --md-ref-palette-neutral10: #1C1B1F;
+    --md-ref-palette-neutral20: #313033;
+    --md-ref-palette-neutral30: #484649;
+    --md-ref-palette-neutral40: #605D62;
+    --md-ref-palette-neutral50: #787579;
+    --md-ref-palette-neutral60: #938F94;
+    --md-ref-palette-neutral70: #AEAAAE;
+    --md-ref-palette-neutral80: #C9C5CA;
+    --md-ref-palette-neutral90: #E6E1E5;
+    --md-ref-palette-neutral95: #F4EFF4;
+    --md-ref-palette-neutral99: #FFFBFE;
+
+    /* --- Color: Neutral Variant --- */
+    --md-ref-palette-neutral-variant10: #1D1A22;
+    --md-ref-palette-neutral-variant20: #322F37;
+    --md-ref-palette-neutral-variant30: #49454F;
+    --md-ref-palette-neutral-variant40: #605D66;
+    --md-ref-palette-neutral-variant50: #79747E;
+    --md-ref-palette-neutral-variant60: #938F99;
+    --md-ref-palette-neutral-variant70: #AEAAE4;
+    --md-ref-palette-neutral-variant80: #CAC4D0;
+    --md-ref-palette-neutral-variant90: #E7E0EC;
+    --md-ref-palette-neutral-variant95: #F5EEFA;
+    --md-ref-palette-neutral-variant99: #FFFBFE;
+
+    /* --- Color: Success (Custom) --- */
+    --md-ref-palette-success10: #092100;
+    --md-ref-palette-success20: #1A3A0A;
+    --md-ref-palette-success30: #285315;
+    --md-ref-palette-success40: #386A20;
+    --md-ref-palette-success50: #4A8A2E;
+    --md-ref-palette-success60: #5DA83E;
+    --md-ref-palette-success70: #72C750;
+    --md-ref-palette-success80: #8BE467;
+    --md-ref-palette-success90: #A8F084;
+    --md-ref-palette-success95: #C4F3A0;
+    --md-ref-palette-success99: #F7FFF0;
+
+    /* --- Light Scheme Colors --- */
+    --md-sys-color-primary: var(--md-ref-palette-primary40);
+    --md-sys-color-on-primary: var(--md-ref-palette-primary100);
+    --md-sys-color-primary-container: var(--md-ref-palette-primary90);
+    --md-sys-color-on-primary-container: var(--md-ref-palette-primary10);
+
+    --md-sys-color-secondary: var(--md-ref-palette-secondary40);
+    --md-sys-color-on-secondary: var(--md-ref-palette-secondary100, #FFFFFF);
+    --md-sys-color-secondary-container: var(--md-ref-palette-secondary90);
+    --md-sys-color-on-secondary-container: var(--md-ref-palette-secondary10);
+
+    --md-sys-color-tertiary: var(--md-ref-palette-tertiary40);
+    --md-sys-color-on-tertiary: var(--md-ref-palette-tertiary100, #FFFFFF);
+    --md-sys-color-tertiary-container: var(--md-ref-palette-tertiary90);
+    --md-sys-color-on-tertiary-container: var(--md-ref-palette-tertiary10);
+
+    --md-sys-color-error: var(--md-ref-palette-error40);
+    --md-sys-color-on-error: var(--md-ref-palette-error100, #FFFFFF);
+    --md-sys-color-error-container: var(--md-ref-palette-error90);
+    --md-sys-color-on-error-container: var(--md-ref-palette-error10);
+
+    --md-sys-color-success: var(--md-ref-palette-success40);
+    --md-sys-color-on-success: var(--md-ref-palette-success100, #FFFFFF);
+    --md-sys-color-success-container: var(--md-ref-palette-success95);
+    --md-sys-color-on-success-container: var(--md-ref-palette-success10);
+
+    /* --- Surface Colors (Light) --- */
+    --md-sys-color-background: var(--md-ref-palette-neutral99);
+    --md-sys-color-on-background: var(--md-ref-palette-neutral10);
+
+    --md-sys-color-surface: var(--md-ref-palette-neutral99);
+    --md-sys-color-on-surface: var(--md-ref-palette-neutral10);
+    --md-sys-color-surface-dim: var(--md-ref-palette-neutral-variant87, #D8D3D8);
+    --md-sys-color-surface-bright: var(--md-ref-palette-neutral99);
+
+    --md-sys-color-surface-container-lowest: var(--md-ref-palette-neutral100, #FFFFFF);
+    --md-sys-color-surface-container-low: var(--md-ref-palette-neutral-variant96, #F7F2FA);
+    --md-sys-color-surface-container: var(--md-ref-palette-neutral-variant94, #F3EDF7);
+    --md-sys-color-surface-container-high: var(--md-ref-palette-neutral-variant92, #ECE6F0);
+    --md-sys-color-surface-container-highest: var(--md-ref-palette-neutral-variant90, #E6E0E9);
+
+    --md-sys-color-surface-variant: var(--md-ref-palette-neutral-variant90);
+    --md-sys-color-on-surface-variant: var(--md-ref-palette-neutral-variant30);
+
+    --md-sys-color-inverse-surface: var(--md-ref-palette-neutral20);
+    --md-sys-color-inverse-on-surface: var(--md-ref-palette-neutral95);
+    --md-sys-color-inverse-primary: var(--md-ref-palette-primary80);
+
+    /* --- Outline Colors --- */
+    --md-sys-color-outline: var(--md-ref-palette-neutral-variant50);
+    --md-sys-color-outline-variant: var(--md-ref-palette-neutral-variant80);
+
+    /* --- Scrim --- */
+    --md-sys-color-scrim: #000000;
+
+    /* --- State Layer Opacities --- */
+    --md-sys-state-hover-opacity: 0.08;
+    --md-sys-state-focus-opacity: 0.12;
+    --md-sys-state-pressed-opacity: 0.12;
+    --md-sys-state-dragged-opacity: 0.16;
+
+    /* --- Elevation / Shadow System (Removed) --- */
+    --md-sys-elevation-0: none;
+    --md-sys-elevation-1: none;
+    --md-sys-elevation-2: none;
+    --md-sys-elevation-3: none;
+    --md-sys-elevation-4: none;
+    --md-sys-elevation-5: none;
+
+    /* --- Elevation Ambient Tone Mapping --- */
+    /* MD3: surface tonal elevation uses primary color overlays */
+    --md-sys-surface-tint-color: var(--md-sys-color-primary);
+    --md-sys-elevation-level-0: transparent;
+    --md-sys-elevation-level-1: color-mix(in srgb, var(--md-sys-color-primary) 5%, transparent);
+    --md-sys-elevation-level-2: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent);
+    --md-sys-elevation-level-3: color-mix(in srgb, var(--md-sys-color-primary) 11%, transparent);
+
+    /* --- Shape Tokens --- */
+    --md-sys-shape-corner-none: 0px;
+    --md-sys-shape-corner-extra-small: 4px;
+    --md-sys-shape-corner-extra-small-top: 4px 4px 0 0;
+    --md-sys-shape-corner-small: 8px;
+    --md-sys-shape-corner-medium: 12px;
+    --md-sys-shape-corner-large: 16px;
+    --md-sys-shape-corner-extra-large: 28px;
+    --md-sys-shape-corner-full: 9999px;
+
+    /* --- Typography Scale --- */
+    --md-sys-typescale-display-large-size: 57px;
+    --md-sys-typescale-display-large-line-height: 64px;
+    --md-sys-typescale-display-large-weight: 400;
+
+    --md-sys-typescale-display-medium-size: 45px;
+    --md-sys-typescale-display-medium-line-height: 52px;
+    --md-sys-typescale-display-medium-weight: 400;
+
+    --md-sys-typescale-display-small-size: 36px;
+    --md-sys-typescale-display-small-line-height: 44px;
+    --md-sys-typescale-display-small-weight: 400;
+
+    --md-sys-typescale-headline-large-size: 32px;
+    --md-sys-typescale-headline-large-line-height: 40px;
+    --md-sys-typescale-headline-large-weight: 400;
+
+    --md-sys-typescale-headline-medium-size: 28px;
+    --md-sys-typescale-headline-medium-line-height: 36px;
+    --md-sys-typescale-headline-medium-weight: 400;
+
+    --md-sys-typescale-headline-small-size: 24px;
+    --md-sys-typescale-headline-small-line-height: 32px;
+    --md-sys-typescale-headline-small-weight: 400;
+
+    --md-sys-typescale-title-large-size: 22px;
+    --md-sys-typescale-title-large-line-height: 28px;
+    --md-sys-typescale-title-large-weight: 400;
+
+    --md-sys-typescale-title-medium-size: 16px;
+    --md-sys-typescale-title-medium-line-height: 24px;
+    --md-sys-typescale-title-medium-weight: 500;
+
+    --md-sys-typescale-title-small-size: 14px;
+    --md-sys-typescale-title-small-line-height: 20px;
+    --md-sys-typescale-title-small-weight: 500;
+
+    --md-sys-typescale-body-large-size: 16px;
+    --md-sys-typescale-body-large-line-height: 24px;
+    --md-sys-typescale-body-large-weight: 400;
+
+    --md-sys-typescale-body-medium-size: 14px;
+    --md-sys-typescale-body-medium-line-height: 20px;
+    --md-sys-typescale-body-medium-weight: 400;
+
+    --md-sys-typescale-body-small-size: 12px;
+    --md-sys-typescale-body-small-line-height: 16px;
+    --md-sys-typescale-body-small-weight: 400;
+
+    --md-sys-typescale-label-large-size: 14px;
+    --md-sys-typescale-label-large-line-height: 20px;
+    --md-sys-typescale-label-large-weight: 500;
+
+    --md-sys-typescale-label-medium-size: 12px;
+    --md-sys-typescale-label-medium-line-height: 16px;
+    --md-sys-typescale-label-medium-weight: 500;
+
+    --md-sys-typescale-label-small-size: 11px;
+    --md-sys-typescale-label-small-line-height: 16px;
+    --md-sys-typescale-label-small-weight: 500;
+
+    /* --- Motion Tokens --- */
+    --md-sys-motion-duration-short1: 50ms;
+    --md-sys-motion-duration-short2: 100ms;
+    --md-sys-motion-duration-short3: 150ms;
+    --md-sys-motion-duration-short4: 200ms;
+    --md-sys-motion-duration-medium1: 250ms;
+    --md-sys-motion-duration-medium2: 300ms;
+    --md-sys-motion-duration-medium3: 350ms;
+    --md-sys-motion-duration-medium4: 400ms;
+    --md-sys-motion-duration-long1: 450ms;
+    --md-sys-motion-duration-long2: 500ms;
+    --md-sys-motion-duration-long3: 550ms;
+    --md-sys-motion-duration-long4: 600ms;
+
+    --md-sys-motion-easing-linear: cubic-bezier(0, 0, 1, 1);
+    --md-sys-motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+    --md-sys-motion-easing-standard-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
+    --md-sys-motion-easing-standard-decelerate: cubic-bezier(0, 0, 0.2, 1);
+    --md-sys-motion-easing-emphasized: cubic-bezier(0.2, 0, 0, 1);
+    --md-sys-motion-easing-emphasized-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
+    --md-sys-motion-easing-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
+
+    /* --- Spacing System --- */
+    --md-sys-spacing-xs: 4px;
+    --md-sys-spacing-sm: 8px;
+    --md-sys-spacing-md: 12px;
+    --md-sys-spacing-lg: 16px;
+    --md-sys-spacing-xl: 24px;
+    --md-sys-spacing-2xl: 32px;
+    --md-sys-spacing-3xl: 48px;
+}
+
+/* ========================================
+   2. Global Reset & Base Styles
+   ======================================== */
+*,
+*::before,
+*::after {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
 }
 
 body {
-    font-family: 'Microsoft YaHei UI', Arial, Helvetica, sans-serif;
-    background-color: #f5f5f5;
-    color: #333;
-    line-height: 1.6;
+    font-family: 'Google Sans', 'Noto Sans SC', 'Microsoft YaHei UI', system-ui, -apple-system, sans-serif;
+    background-color: var(--md-sys-color-background);
+    color: var(--md-sys-color-on-background);
+    font-size: var(--md-sys-typescale-body-large-size);
+    line-height: var(--md-sys-typescale-body-large-line-height);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    min-height: 100vh;
+    overflow-x: hidden;
+    transition: background-color var(--md-sys-motion-duration-long4) var(--md-sys-motion-easing-standard),
+                color var(--md-sys-motion-duration-long4) var(--md-sys-motion-easing-standard);
 }
 
-.container {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 20px;
-    background-color: #fff;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-    margin-top: 50px;
+/* Dark mode overrides */
+body.dark-mode {
+    --md-sys-color-primary: var(--md-ref-palette-primary80);
+    --md-sys-color-on-primary: var(--md-ref-palette-primary20);
+    --md-sys-color-primary-container: var(--md-ref-palette-primary30);
+    --md-sys-color-on-primary-container: var(--md-ref-palette-primary90);
+
+    --md-sys-color-secondary: var(--md-ref-palette-secondary80);
+    --md-sys-color-on-secondary: var(--md-ref-palette-secondary20);
+    --md-sys-color-secondary-container: var(--md-ref-palette-secondary30);
+    --md-sys-color-on-secondary-container: var(--md-ref-palette-secondary90);
+
+    --md-sys-color-tertiary: var(--md-ref-palette-tertiary80);
+    --md-sys-color-on-tertiary: var(--md-ref-palette-tertiary20);
+    --md-sys-color-tertiary-container: var(--md-ref-palette-tertiary30);
+    --md-sys-color-on-tertiary-container: var(--md-ref-palette-tertiary90);
+
+    --md-sys-color-error: var(--md-ref-palette-error80);
+    --md-sys-color-on-error: var(--md-ref-palette-error20);
+    --md-sys-color-error-container: var(--md-ref-palette-error30);
+    --md-sys-color-on-error-container: var(--md-ref-palette-error90);
+
+    --md-sys-color-success: var(--md-ref-palette-success80);
+    --md-sys-color-on-success: var(--md-ref-palette-success20);
+    --md-sys-color-success-container: var(--md-ref-palette-success30);
+    --md-sys-color-on-success-container: var(--md-ref-palette-success90);
+
+    --md-sys-color-background: var(--md-ref-palette-neutral10);
+    --md-sys-color-on-background: var(--md-ref-palette-neutral90);
+
+    --md-sys-color-surface: var(--md-ref-palette-neutral10);
+    --md-sys-color-on-surface: var(--md-ref-palette-neutral90);
+    --md-sys-color-surface-dim: var(--md-ref-palette-neutral20);
+    --md-sys-color-surface-bright: var(--md-ref-palette-neutral40);
+
+    --md-sys-color-surface-container-lowest: var(--md-ref-palette-neutral5);
+    --md-sys-color-surface-container-low: var(--md-ref-palette-neutral12);
+    --md-sys-color-surface-container: var(--md-ref-palette-neutral17);
+    --md-sys-color-surface-container-high: var(--md-ref-palette-neutral22);
+    --md-sys-color-surface-container-highest: var(--md-ref-palette-neutral24);
+
+    --md-sys-color-surface-variant: var(--md-ref-palette-neutral-variant30);
+    --md-sys-color-on-surface-variant: var(--md-ref-palette-neutral-variant80);
+
+    --md-sys-color-inverse-surface: var(--md-ref-palette-neutral90);
+    --md-sys-color-inverse-on-surface: var(--md-ref-palette-neutral20);
+    --md-sys-color-inverse-primary: var(--md-ref-palette-primary40);
+
+    --md-sys-color-outline: var(--md-ref-palette-neutral-variant60);
+    --md-sys-color-outline-variant: var(--md-ref-palette-neutral-variant40);
+
+    --md-sys-color-scrim: #000000;
 }
 
+::selection {
+    background-color: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-on-primary-container);
+}
+
+/* ========================================
+   3. Typography
+   ======================================== */
 h1 {
+    font-size: var(--md-sys-typescale-headline-medium-size);
+    line-height: var(--md-sys-typescale-headline-medium-line-height);
+    font-weight: var(--md-sys-typescale-headline-medium-weight);
     text-align: center;
-    margin-bottom: 30px;
-    color: #333;
+    margin-bottom: var(--md-sys-spacing-2xl);
+    color: var(--md-sys-color-on-surface);
+    letter-spacing: -0.02em;
 }
 
 h2 {
-    margin-bottom: 20px;
-    color: #444;
+    font-size: var(--md-sys-typescale-title-large-size);
+    line-height: var(--md-sys-typescale-title-large-line-height);
+    font-weight: var(--md-sys-typescale-title-large-weight);
+    margin-bottom: var(--md-sys-spacing-lg);
+    color: var(--md-sys-color-on-surface);
 }
 
-/* 表单样式 */
+h3 {
+    font-size: var(--md-sys-typescale-title-medium-size);
+    line-height: var(--md-sys-typescale-title-medium-line-height);
+    font-weight: var(--md-sys-typescale-title-medium-weight);
+    margin-bottom: var(--md-sys-spacing-md);
+    color: var(--md-sys-color-on-surface-variant);
+}
+
+p {
+    margin-bottom: var(--md-sys-spacing-md);
+    color: var(--md-sys-color-on-surface);
+}
+
+label {
+    font-size: var(--md-sys-typescale-body-medium-size);
+    line-height: var(--md-sys-typescale-body-medium-line-height);
+    font-weight: var(--md-sys-typescale-body-medium-weight);
+    color: var(--md-sys-color-on-surface-variant);
+    letter-spacing: 0.01em;
+}
+
+/* ========================================
+   4. Container & Layout
+   ======================================== */
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: var(--md-sys-spacing-xl);
+    background-color: var(--md-sys-color-surface-container-low);
+    border-radius: var(--md-sys-shape-corner-large);
+    margin-top: var(--md-sys-spacing-2xl);
+    margin-bottom: var(--md-sys-spacing-2xl);
+    animation: md3-fade-in-up 0.4s var(--md-sys-motion-easing-standard-decelerate);
+    border: 1px solid var(--md-sys-color-outline-variant);
+}
+
+/* Answer page special layout - full viewport */
+#app > div:has(.navigation):has(.question) {
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    background: transparent;
+    padding-top: 80px;
+    padding-bottom: 96px;
+}
+
+#app > div:has(.navigation):has(.question) .header {
+    display: none;
+}
+
+#app > div:has(.navigation):has(.question) .question {
+    max-width: 800px;
+    margin: 0 auto;
+    margin-top: var(--md-sys-spacing-xl);
+}
+
+/* ========================================
+   5. Form Elements
+   ======================================== */
+
+/* --- Text Fields (MD3 Filled) --- */
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="password"],
+select,
+textarea {
+    width: 100%;
+    padding: var(--md-sys-spacing-lg) var(--md-sys-spacing-lg);
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: var(--md-sys-shape-corner-extra-small);
+    background-color: var(--md-sys-color-surface-container-lowest);
+    color: var(--md-sys-color-on-surface);
+    font-size: var(--md-sys-typescale-body-large-size);
+    line-height: var(--md-sys-typescale-body-large-line-height);
+    font-family: inherit;
+    transition: all var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+input[type="text"]:hover,
+input[type="number"]:hover,
+select:hover,
+textarea:hover {
+    border-color: var(--md-sys-color-on-surface);
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+select:focus,
+textarea:focus {
+    border-color: var(--md-sys-color-primary);
+    border-width: 2px;
+    padding: calc(var(--md-sys-spacing-lg) - 0.5px) calc(var(--md-sys-spacing-lg) - 0.5px);
+}
+
+input[type="text"]:disabled,
+input[type="number"]:disabled,
+select:disabled,
+textarea:disabled {
+    opacity: 0.38;
+    cursor: not-allowed;
+    border-color: var(--md-sys-color-outline-variant);
+}
+
+textarea {
+    resize: vertical;
+    min-height: 100px;
+    line-height: 1.6;
+}
+
+/* --- Number Input --- */
+input[type="number"] {
+    -moz-appearance: textfield;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+    opacity: 1;
+    height: 24px;
+}
+
+/* --- Checkbox --- */
+input[type="checkbox"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+    border: 2px solid var(--md-sys-color-outline);
+    border-radius: 2px;
+    background-color: transparent;
+    cursor: pointer;
+    position: relative;
+    transition: all var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+}
+
+input[type="checkbox"]:checked {
+    border-color: var(--md-sys-color-primary);
+    background-color: var(--md-sys-color-primary);
+}
+
+input[type="checkbox"]:checked::after {
+    content: '';
+    position: absolute;
+    width: 5px;
+    height: 9px;
+    border: solid var(--md-sys-color-on-primary);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg) translateY(-1px);
+    top: 2px;
+    left: 5px;
+}
+
+input[type="checkbox"]:hover:not(:disabled) {
+    border-color: var(--md-sys-color-on-surface);
+}
+
+input[type="checkbox"]:focus-visible {
+    outline: 2px solid var(--md-sys-color-primary);
+    outline-offset: 2px;
+}
+
+input[type="checkbox"]:disabled {
+    opacity: 0.38;
+    cursor: not-allowed;
+}
+
+/* --- Form Group --- */
 .form-group {
-    margin-bottom: 20px;
+    margin-bottom: var(--md-sys-spacing-xl);
 }
 
 .form-group label {
-    display: block;
-    margin-bottom: 5px;
-    font-weight: bold;
-}
-
-input[type="text"],
-input[type="number"] {
-    width: 100%;
-    padding: 10px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 16px;
-}
-
-/* 输入框和按钮组合 */
-.input-with-button {
     display: flex;
-    gap: 10px;
-}
-
-.input-with-button input {
-    flex: 1;
-}
-
-.btn-small {
-    padding: 5px 8px;
-    font-size: 12px;
-    border-radius: 4px;
-    min-width: 40px;
-    white-space: nowrap;
-}
-
-/* 按钮样式 */
-.btn {
-    padding: 10px 20px;
-    border: none;
-    border-radius: 4px;
-    font-size: 16px;
+    align-items: center;
+    gap: var(--md-sys-spacing-sm);
+    margin-bottom: var(--md-sys-spacing-sm);
+    font-weight: var(--md-sys-typescale-label-large-weight);
+    color: var(--md-sys-color-on-surface-variant);
     cursor: pointer;
-    margin-right: 10px;
-    margin-bottom: 10px;
 }
 
+.form-group label input[type="checkbox"] {
+    flex-shrink: 0;
+}
+
+/* ========================================
+   6. Button System - MD3 Complete
+   ======================================== */
+.btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--md-sys-spacing-sm);
+    padding: 10px 24px;
+    min-height: 40px;
+    border: none;
+    border-radius: var(--md-sys-shape-corner-full);
+    font-size: var(--md-sys-typescale-label-large-size);
+    font-weight: var(--md-sys-typescale-label-large-weight);
+    line-height: var(--md-sys-typescale-label-large-line-height);
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    overflow: hidden;
+    transition: all var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* State Layer */
+.btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: currentColor;
+    opacity: 0;
+    transition: opacity var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
+    pointer-events: none;
+}
+
+.btn:hover::before {
+    opacity: var(--md-sys-state-hover-opacity);
+}
+
+.btn:focus-visible::before {
+    opacity: var(--md-sys-state-focus-opacity);
+}
+
+.btn:active::before {
+    opacity: var(--md-sys-state-pressed-opacity);
+}
+
+.btn:focus-visible {
+    outline: 2px solid var(--md-sys-color-primary);
+    outline-offset: 2px;
+}
+
+.btn:disabled {
+    opacity: 0.38;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* --- Filled Button (Primary) --- */
 .btn-primary {
-    background-color: #007bff;
-    color: #fff;
+    background-color: var(--md-sys-color-primary);
+    color: var(--md-sys-color-on-primary);
 }
 
+.btn-primary:hover:not(:disabled) {
+}
+
+.btn-primary:active:not(:disabled) {
+}
+
+/* --- Tonal Button (Secondary) --- */
 .btn-secondary {
-    background-color: #6c757d;
-    color: #fff;
+    background-color: var(--md-sys-color-secondary-container);
+    color: var(--md-sys-color-on-secondary-container);
 }
 
+/* --- Elevated Button --- */
+.btn-elevated {
+    background-color: var(--md-sys-color-surface-container-low);
+    color: var(--md-sys-color-primary);
+}
+
+.btn-elevated:hover:not(:disabled) {
+}
+
+/* --- Outlined Button --- */
+.btn-outlined {
+    background-color: transparent;
+    color: var(--md-sys-color-primary);
+    border: 1px solid var(--md-sys-color-outline);
+}
+
+.btn-outlined:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent);
+}
+
+/* --- Text Button --- */
+.btn-text {
+    background-color: transparent;
+    color: var(--md-sys-color-primary);
+}
+
+.btn-text:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent);
+}
+
+/* --- Error/Danger Button --- */
 .btn-danger {
-    background-color: #dc3545;
-    color: #fff;
+    background-color: var(--md-sys-color-error-container);
+    color: var(--md-sys-color-on-error-container);
 }
 
+.btn-danger:hover:not(:disabled) {
+    background-color: var(--md-ref-palette-error95);
+}
+
+/* Legacy alias: btn-info -> outlined */
 .btn-info {
-    background-color: #17a2b8;
-    color: #fff;
+    background-color: transparent;
+    color: var(--md-sys-color-primary);
+    border: 1px solid var(--md-sys-color-outline);
 }
 
-.btn:hover {
-    opacity: 0.9;
+.btn-info:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent);
 }
 
-/* 错误信息 */
-.error-message {
-    color: #dc3545;
-    margin-top: 10px;
-    padding: 10px;
-    background-color: #f8d7da;
-    border: 1px solid #f5c6cb;
-    border-radius: 4px;
+/* --- Small Button --- */
+.btn-small {
+    padding: 6px 16px;
+    min-height: 32px;
+    font-size: var(--md-sys-typescale-label-medium-size);
 }
 
-/* 统计信息 */
-.stats {
-    margin-top: 30px;
-    padding: 20px;
-    background-color: #f8f9fa;
-    border-radius: 4px;
-    border: 1px solid #e9ecef;
+/* --- Icon Button --- */
+.btn-icon {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: var(--md-sys-shape-corner-full);
+    background-color: transparent;
+    color: var(--md-sys-color-on-surface-variant);
 }
 
-.stats h3 {
-    margin-bottom: 10px;
+.btn-icon:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
 }
 
-.stats ul {
-    list-style-type: none;
-    margin-left: 20px;
-}
-
-/* 答题页面 */
+/* ========================================
+   7. Progress Bar - MD3 Linear Progress
+   ======================================== */
 .header {
-    margin-bottom: 30px;
-}
-
-/* 答题页面容器需要为固定底栏和顶栏留出空间 */
-#app .container:has(.navigation) {
-    padding-bottom: 90px;
-    padding-top: 70px;
+    max-width: 800px;
+    margin: 0 auto;
+    margin-bottom: var(--md-sys-spacing-lg);
+    padding: var(--md-sys-spacing-lg) var(--md-sys-spacing-xl);
+    background-color: var(--md-sys-color-surface-container);
+    border-radius: var(--md-sys-shape-corner-large);
 }
 
 .progress {
     width: 100%;
-    height: 20px;
-    background-color: #e9ecef;
-    border-radius: 10px;
-    margin-top: 10px;
+    height: 4px;
+    background-color: var(--md-sys-color-surface-container-highest);
+    border-radius: var(--md-sys-shape-corner-full);
+    margin-top: var(--md-sys-spacing-sm);
     position: relative;
+    overflow: hidden;
 }
 
 .progress-bar {
     height: 100%;
-    background-color: #007bff;
-    border-radius: 10px;
-    transition: width 0.3s ease;
+    background-color: var(--md-sys-color-primary);
+    border-radius: var(--md-sys-shape-corner-full);
+    transition: width var(--md-sys-motion-duration-long2) var(--md-sys-motion-easing-emphasized);
+    position: relative;
+    min-width: 4px;
+}
+
+.progress-bar::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.4) 50%,
+        transparent 100%
+    );
+    animation: md3-shimmer 2s ease-in-out infinite;
 }
 
 .progress-text {
-    position: absolute;
-    top: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    line-height: 20px;
-    color: #333;
-    font-size: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--md-sys-spacing-sm);
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: var(--md-sys-typescale-body-small-size);
+    font-weight: var(--md-sys-typescale-label-large-weight);
 }
 
+@keyframes md3-shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+/* ========================================
+   8. Question Card - MD3 Elevated Card
+   ======================================== */
 .question {
-    margin-bottom: 30px;
-    padding: 20px;
-    background-color: #f8f9fa;
-    border-radius: 8px;
+    margin-bottom: var(--md-sys-spacing-xl);
+    background-color: var(--md-sys-color-surface-container-low);
+    border-radius: var(--md-sys-shape-corner-large);
+    overflow: hidden;
+    animation: md3-fade-in-up 0.35s var(--md-sys-motion-easing-emphasized-decelerate);
+    border: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .question-header {
-    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--md-sys-spacing-xl) var(--md-sys-spacing-xl) var(--md-sys-spacing-lg);
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--md-sys-color-primary-container) 80%, var(--md-sys-color-surface)),
+        color-mix(in srgb, var(--md-sys-color-secondary-container) 60%, var(--md-sys-color-surface))
+    );
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.question-header h2 {
+    margin-bottom: 0;
+    font-size: var(--md-sys-typescale-title-medium-size);
+    font-weight: var(--md-sys-typescale-title-medium-weight);
+    color: var(--md-sys-color-on-primary-container);
+    letter-spacing: 0.01em;
+}
+
+.question-header .question-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--md-sys-shape-corner-full);
+    background-color: color-mix(in srgb, var(--md-sys-color-primary) 15%, transparent);
+    color: var(--md-sys-color-primary);
+    font-size: var(--md-sys-typescale-label-large-size);
+    font-weight: var(--md-sys-typescale-label-large-weight);
+    margin-right: var(--md-sys-spacing-sm);
 }
 
 .question-type {
-    display: inline-block;
-    padding: 5px 10px;
-    background-color: #007bff;
-    color: #fff;
-    border-radius: 4px;
-    font-size: 14px;
-    margin-left: 10px;
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 14px;
+    background-color: var(--md-sys-color-primary);
+    color: var(--md-sys-color-on-primary);
+    border-radius: var(--md-sys-shape-corner-small);
+    font-size: var(--md-sys-typescale-label-small-size);
+    font-weight: var(--md-sys-typescale-label-medium-weight);
+    letter-spacing: 0.05em;
+    line-height: 1.4;
 }
 
 .question-content {
-    font-size: 18px;
-    margin-bottom: 20px;
-    line-height: 1.8;
+    font-size: var(--md-sys-typescale-body-large-size);
+    line-height: 1.75;
+    padding: var(--md-sys-spacing-xl) var(--md-sys-spacing-xl) var(--md-sys-spacing-lg);
+    color: var(--md-sys-color-on-surface);
 }
 
-/* 选项样式 */
+/* ========================================
+   9. Option Cards - MD3 Selectable Cards
+   ======================================== */
+/* --- Option Cards - MD3 Selectable Cards --- */
 .options {
-    margin-bottom: 20px;
+    padding: 0 var(--md-sys-spacing-xl) var(--md-sys-spacing-xl);
 }
 
 .option-item {
-    margin-bottom: 10px;
-    padding: 10px;
-    background-color: #fff;
-    border-radius: 4px;
-    border: 1px solid #ddd;
+    position: relative;
+    margin-bottom: var(--md-sys-spacing-sm);
+    padding: var(--md-sys-spacing-lg);
+    background-color: var(--md-sys-color-surface-container-lowest);
+    border-radius: var(--md-sys-shape-corner-small);
+    border: 1.5px solid var(--md-sys-color-outline-variant);
+    cursor: pointer;
+    transition: all var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+    overflow: hidden;
+    user-select: none;
 }
 
-.option-item input {
-    margin-right: 10px;
+/* State layer on option */
+.option-item::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--md-sys-color-primary);
+    opacity: 0;
+    transition: opacity var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
+    pointer-events: none;
 }
 
-/* 正确和错误选项样式 */
+.option-item:hover:not(:has(input:disabled)) {
+    border-color: var(--md-sys-color-primary);
+    transform: translateY(-1px);
+}
+
+.option-item:hover:not(:has(input:disabled))::before {
+    opacity: var(--md-sys-state-hover-opacity);
+}
+
+.option-item:active:not(:has(input:disabled))::before {
+    opacity: var(--md-sys-state-pressed-opacity);
+}
+
+/* Selected state */
+.option-item:has(input:checked) {
+    border-color: var(--md-sys-color-primary);
+    background-color: color-mix(in srgb, var(--md-sys-color-primary-container) 60%, var(--md-sys-color-surface-container-lowest));
+}
+
+/* Hide native radio/checkbox */
+.option-item input[type="radio"],
+.option-item input[type="checkbox"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}
+
+/* Custom radio */
+.option-item:has(input[type="radio"]) label::before {
+    content: '';
+    display: inline-flex;
+    width: 20px;
+    height: 20px;
+    min-width: 20px;
+    border-radius: 50%;
+    border: 2px solid var(--md-sys-color-outline);
+    background-color: transparent;
+    transition: all var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+}
+
+.option-item:has(input[type="radio"]:checked) label::before {
+    border-color: var(--md-sys-color-primary);
+    border-width: 6px;
+    background-color: var(--md-sys-color-primary);
+}
+
+.option-item:has(input[type="radio"]:hover) label::before {
+    border-color: var(--md-sys-color-on-surface);
+}
+
+/* Custom checkbox */
+.option-item:has(input[type="checkbox"]) label::before {
+    content: '';
+    display: inline-flex;
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+    border-radius: 2px;
+    border: 2px solid var(--md-sys-color-outline);
+    background-color: transparent;
+    transition: all var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+}
+
+.option-item:has(input[type="checkbox"]:checked) label::before {
+    content: '';
+    border-color: var(--md-sys-color-primary);
+    background-color: var(--md-sys-color-primary);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 12px;
+}
+
+.option-item:has(input[type="checkbox"]:hover) label::before {
+    border-color: var(--md-sys-color-on-surface);
+}
+
+.option-item label {
+    display: flex;
+    align-items: center;
+    gap: var(--md-sys-spacing-md);
+    cursor: pointer;
+    font-size: var(--md-sys-typescale-body-large-size);
+    line-height: var(--md-sys-typescale-body-large-line-height);
+    position: relative;
+    z-index: 1;
+    color: var(--md-sys-color-on-surface);
+}
+
+/* Correct state */
 .option-item label.correct {
-    color: #28a745; /* 绿色 */
-    font-weight: bold;
+    color: var(--md-sys-color-on-success-container);
+    font-weight: var(--md-sys-typescale-title-medium-weight);
 }
 
+.option-item:has(label.correct) {
+    border-color: var(--md-sys-color-success);
+    background-color: var(--md-sys-color-success-container);
+}
+
+.option-item:has(label.correct) label::before {
+    border-color: var(--md-sys-color-success) !important;
+}
+
+.option-item:has(input[type="radio"]:checked) label.correct::before,
+.option-item:has(input[type="checkbox"]:checked) label.correct::before {
+    border-color: var(--md-sys-color-success) !important;
+    background-color: var(--md-sys-color-success) !important;
+}
+
+/* Incorrect state */
 .option-item label.incorrect {
-    color: #dc3545; /* 红色 */
-    font-weight: bold;
+    color: var(--md-sys-color-on-error-container);
+    font-weight: var(--md-sys-typescale-title-medium-weight);
 }
 
-/* 错题集样式 */
-.wrong-questions {
-    margin-top: 30px;
-    padding: 20px;
-    background-color: #f8f9fa;
-    border-radius: 8px;
-    border: 1px solid #e9ecef;
+.option-item:has(label.incorrect) {
+    border-color: var(--md-sys-color-error);
+    background-color: var(--md-sys-color-error-container);
+    animation: md3-shake 0.4s var(--md-sys-motion-easing-emphasized);
 }
 
-.wrong-question-item {
-    margin-bottom: 30px;
-    padding: 20px;
-    background-color: #fff;
-    border-radius: 8px;
-    border: 1px solid #dee2e6;
+.option-item:has(label.incorrect) label::before {
+    border-color: var(--md-sys-color-error) !important;
 }
 
-.wrong-question-item .question-header {
-    margin-bottom: 10px;
+.option-item:has(input[type="radio"]:checked) label.incorrect::before,
+.option-item:has(input[type="checkbox"]:checked) label.incorrect::before {
+    border-color: var(--md-sys-color-error) !important;
+    background-color: var(--md-sys-color-error) !important;
 }
 
-.wrong-question-item .question-content {
-    margin-bottom: 20px;
-    font-size: 16px;
-    line-height: 1.8;
+@keyframes md3-shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-6px); }
+    40% { transform: translateX(6px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
 }
 
-.answers {
-    margin-top: 20px;
-    padding: 15px;
-    background-color: #f8f9fa;
-    border-radius: 4px;
-}
-
-.answers p {
-    margin: 5px 0;
-}
-
-/* 输入答案样式 */
+/* ========================================
+   10. Input Answer Styles
+   ======================================== */
 .input-answer {
-    margin-bottom: 20px;
+    padding: 0 var(--md-sys-spacing-xl) var(--md-sys-spacing-xl);
 }
 
 .input-item {
-    margin-bottom: 10px;
+    margin-bottom: var(--md-sys-spacing-md);
 }
 
-/* 正确答案显示样式 */
+.input-answer input[type="text"],
+.input-answer textarea {
+    padding: var(--md-sys-spacing-lg);
+    font-size: var(--md-sys-typescale-body-large-size);
+    background-color: var(--md-sys-color-surface-container-lowest);
+    border: 2px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-medium);
+    transition: all var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+}
+
+.input-answer input[type="text"]:focus,
+.input-answer textarea:focus {
+    border-color: var(--md-sys-color-primary);
+}
+
+.input-answer input[type="text"]:disabled,
+.input-answer textarea:disabled {
+    opacity: 0.6;
+    background-color: var(--md-sys-color-surface-container);
+    border-color: var(--md-sys-color-outline-variant);
+}
+
+/* ========================================
+   11. Correct Answer & Analysis
+   ======================================== */
+.submit-answer-section {
+    margin-top: var(--md-sys-spacing-xl);
+    padding: 0 var(--md-sys-spacing-xl) var(--md-sys-spacing-lg);
+    display: flex;
+    justify-content: center;
+}
+
+.submit-answer-section .btn {
+    min-width: 120px;
+}
+
 .correct-answer {
-    margin-top: 20px;
-    padding: 15px;
-    background-color: #d4edda;
-    border: 1px solid #c3e6cb;
-    border-radius: 4px;
-    color: #155724;
+    margin-top: var(--md-sys-spacing-xl);
+    padding: var(--md-sys-spacing-lg);
+    background-color: var(--md-sys-color-success-container);
+    border: 1px solid var(--md-sys-color-success);
+    border-radius: var(--md-sys-shape-corner-small);
+    color: var(--md-sys-color-on-success-container);
+    animation: md3-fade-in-up 0.3s var(--md-sys-motion-easing-standard-decelerate);
 }
 
 .correct-answer h3 {
     margin-top: 0;
-    margin-bottom: 10px;
-    font-size: 16px;
+    margin-bottom: var(--md-sys-spacing-sm);
+    font-size: var(--md-sys-typescale-title-small-size);
+    font-weight: var(--md-sys-typescale-title-small-weight);
+    color: var(--md-sys-color-success);
+    letter-spacing: 0.02em;
 }
 
 .correct-answer-item {
-    margin-bottom: 5px;
-    padding: 5px 10px;
-    background-color: #fff;
-    border-radius: 4px;
-    border-left: 3px solid #28a745;
-    font-weight: bold;
+    margin-bottom: var(--md-sys-spacing-sm);
+    padding: var(--md-sys-spacing-md) var(--md-sys-spacing-lg);
+    background-color: var(--md-sys-color-surface-container-lowest);
+    border-radius: var(--md-sys-shape-corner-extra-small);
+    border-left: 3px solid var(--md-sys-color-success);
+    font-weight: var(--md-sys-typescale-title-medium-weight);
+    font-size: var(--md-sys-typescale-body-medium-size);
+    color: var(--md-sys-color-on-success-container);
 }
 
-/* 答案解析 */
 .analysis {
-    margin-top: 20px;
-    padding: 15px;
-    background-color: #d4edda;
-    border: 1px solid #c3e6cb;
-    border-radius: 4px;
-    color: #155724;
+    margin-top: var(--md-sys-spacing-lg);
+    padding: var(--md-sys-spacing-lg);
+    background-color: var(--md-sys-color-tertiary-container);
+    border: 1px solid var(--md-sys-color-tertiary);
+    border-radius: var(--md-sys-shape-corner-small);
+    color: var(--md-sys-color-on-tertiary-container);
+    animation: md3-fade-in-up 0.3s var(--md-sys-motion-easing-standard-decelerate) 0.08s both;
 }
 
-/* 导航按钮 */
-.navigation {
+.analysis h3,
+.analysis h4 {
+    margin-top: 0;
+    margin-bottom: var(--md-sys-spacing-sm);
+    font-size: var(--md-sys-typescale-title-small-size);
+    font-weight: var(--md-sys-typescale-title-small-weight);
+    color: var(--md-sys-color-tertiary);
+}
+
+.analysis p {
+    margin-bottom: 0;
+    line-height: 1.8;
+    color: var(--md-sys-color-on-tertiary-container);
+}
+
+/* ========================================
+   12. Navigation Bar - MD3 Bottom App Bar
+   ======================================== */
+
+/* --- Top Bar --- */
+.top-bar {
     position: fixed;
-    bottom: 0;
+    top: 0;
     left: 0;
     right: 0;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 15px 20px;
-    background-color: #fff;
-    border-top: 1px solid #e9ecef;
-    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+    padding: var(--md-sys-spacing-md) var(--md-sys-spacing-xl);
+    padding-top: calc(var(--md-sys-spacing-md) + env(safe-area-inset-top, 0px));
+    background-color: color-mix(in srgb, var(--md-sys-color-surface-bright) 65%, transparent);
+    backdrop-filter: saturate(180%) blur(40px);
+    -webkit-backdrop-filter: saturate(180%) blur(40px);
+    border-bottom: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 40%, transparent);
     z-index: 100;
 }
 
-.nav-btn {
+body.dark-mode .top-bar {
+    background-color: color-mix(in srgb, var(--md-sys-color-surface-dim) 70%, transparent);
+}
+
+.top-bar-left,
+.top-bar-right {
+    flex: 0 0 auto;
+}
+
+.top-bar-center {
+    flex: 1;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 8px;
-    padding: 12px 20px;
+    gap: var(--md-sys-spacing-xs);
+    margin: 0 var(--md-sys-spacing-lg);
+}
+
+/* 统计药丸样式 */
+.stats-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    background-color: var(--md-sys-color-surface-container-highest);
+    border-radius: var(--md-sys-shape-corner-full);
+    font-size: var(--md-sys-typescale-label-large-size);
+    font-weight: var(--md-sys-typescale-label-large-weight);
+    min-width: 80px;
+    justify-content: center;
+}
+
+.correct-count {
+    color: var(--md-sys-color-success);
+}
+
+.wrong-count {
+    color: var(--md-sys-color-error);
+}
+
+.separator {
+    color: var(--md-sys-color-on-surface-variant);
+    margin: 0 2px;
+}
+
+/* 顶栏进度条样式 */
+.top-bar-progress-text {
+    font-size: var(--md-sys-typescale-body-small-size);
+    font-weight: var(--md-sys-typescale-label-medium-weight);
+    color: var(--md-sys-color-on-surface-variant);
+    line-height: 1;
+}
+
+.top-bar-progress {
+    width: 100%;
+    max-width: 200px;
+    height: 4px;
+    background-color: var(--md-sys-color-surface-container-highest);
+    border-radius: var(--md-sys-shape-corner-full);
+    position: relative;
+    overflow: hidden;
+}
+
+.top-bar-progress-bar {
+    height: 100%;
+    background-color: var(--md-sys-color-primary);
+    border-radius: var(--md-sys-shape-corner-full);
+    transition: width var(--md-sys-motion-duration-long2) var(--md-sys-motion-easing-emphasized);
+    position: relative;
+    min-width: 4px;
+}
+
+.top-bar-btn {
     margin: 0;
 }
 
-.arrow-icon {
-    font-size: 18px;
-    font-weight: bold;
+/* --- Bottom Navigation Container --- */
+.navigation {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: grid;
+    grid-template-columns: 64px 1fr 64px;
+    align-items: center;
+    padding: var(--md-sys-spacing-md) var(--md-sys-spacing-xl);
+    padding-bottom: calc(var(--md-sys-spacing-md) + env(safe-area-inset-bottom, 0px));
+    background-color: color-mix(in srgb, var(--md-sys-color-surface-bright) 65%, transparent);
+    backdrop-filter: saturate(180%) blur(40px);
+    -webkit-backdrop-filter: saturate(180%) blur(40px);
+    border-top: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 40%, transparent);
+    z-index: 100;
+    min-height: 72px;
 }
 
+body.dark-mode .navigation {
+    background-color: color-mix(in srgb, var(--md-sys-color-surface-dim) 70%, transparent);
+}
+
+/* --- Left/Right Navigation Areas --- */
+.nav-left,
+.nav-right {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* --- Circular Navigation Buttons --- */
+.nav-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
+    min-height: 48px;
+    padding: 0;
+    margin: 0;
+    border-radius: 50%;
+    background-color: transparent;
+    color: var(--md-sys-color-on-surface);
+    transition: all var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+    border: none;
+    flex-shrink: 0;
+}
+
+.nav-btn:hover:not(:disabled) {
+    background-color: transparent;
+    transform: scale(1.08);
+}
+
+.nav-btn:active:not(:disabled) {
+    background-color: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-on-primary-container);
+    transform: scale(0.95);
+}
+
+.nav-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+body.dark-mode .nav-btn {
+    background-color: var(--md-sys-color-surface-container-highest);
+}
+
+body.dark-mode .nav-btn:hover:not(:disabled) {
+    background-color: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-on-primary-container);
+}
+
+.nav-btn svg {
+    pointer-events: none;
+}
+
+/* --- Center Navigation Area --- */
 .nav-center {
     display: flex;
-    flex: 1;
-    gap: 15px;
+    align-items: center;
     justify-content: center;
+    gap: var(--md-sys-spacing-sm);
+    margin: 0 var(--md-sys-spacing-md);
 }
 
 .nav-center .btn {
     margin: 0;
-    flex: 1;
+    flex: 1 1 0;
     white-space: nowrap;
-    max-width: 150px;
+    height: 48px;
+    max-width: 240px;
+    line-height: 48px;
 }
 
-/* 统计信息 */
+/* ========================================
+   13. Stats Summary (Answer Page)
+   ======================================== */
 .stats-summary {
-    margin-top: 20px;
-    padding: 15px;
-    background-color: #f8f9fa;
-    border-radius: 8px;
-    border: 1px solid #e9ecef;
-    text-align: center;
-    display: flex;
+    display: none;
+}
+
+/* Floating Stats Pill - above navigation bar */
+.floating-stats-pill {
+    position: fixed;
+    bottom: calc(96px + var(--md-sys-spacing-lg));
+    left: 50%;
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 16px;
+    background-color: var(--md-sys-color-surface-container-highest);
+    border-radius: var(--md-sys-shape-corner-full);
+    font-size: var(--md-sys-typescale-label-large-size);
+    font-weight: var(--md-sys-typescale-label-large-weight);
+    min-width: 80px;
     justify-content: center;
-    gap: 40px;
+    z-index: 90;
+    transition: all var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+}
+
+.correct-count {
+    color: var(--md-sys-color-success);
+}
+
+.wrong-count {
+    color: var(--md-sys-color-error);
+}
+
+.separator {
+    color: var(--md-sys-color-on-surface-variant);
+    margin: 0 4px;
 }
 
 .stats-item {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 8px;
+    gap: var(--md-sys-spacing-xs);
 }
 
 .stats-label {
-    font-size: 16px;
-    color: #666;
-    font-weight: bold;
+    font-size: var(--md-sys-typescale-body-small-size);
+    color: var(--md-sys-color-on-surface-variant);
+    font-weight: var(--md-sys-typescale-label-large-weight);
+    letter-spacing: 0.02em;
 }
 
 .stats-value {
-    font-size: 20px;
-    font-weight: bold;
+    font-size: var(--md-sys-typescale-headline-small-size);
+    font-weight: 700;
+    line-height: 1.2;
 }
 
 .stats-value.correct {
-    color: #28a745; /* 绿色 */
+    color: var(--md-sys-color-success);
 }
 
 .stats-value.wrong {
-    color: #dc3545; /* 红色 */
+    color: var(--md-sys-color-error);
 }
 
-/* 成绩页面 */
+/* ========================================
+   14. Result Page
+   ======================================== */
 .result {
     text-align: center;
-    padding: 30px;
-    background-color: #f8f9fa;
-    border-radius: 8px;
-    margin-top: 30px;
+    padding: var(--md-sys-spacing-3xl) var(--md-sys-spacing-xl);
+    background: linear-gradient(
+        135deg,
+        var(--md-sys-color-primary-container) 0%,
+        var(--md-sys-color-secondary-container) 100%
+    );
+    border-radius: var(--md-sys-shape-corner-large);
+    margin-top: var(--md-sys-spacing-xl);
+    animation: md3-fade-in-up 0.5s var(--md-sys-motion-easing-emphasized-decelerate);
+    border: 1px solid var(--md-sys-color-outline-variant);
+    position: relative;
+    overflow: hidden;
+}
+
+.result::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.3) 0%, transparent 60%);
+    pointer-events: none;
 }
 
 .score {
-    font-size: 36px;
-    font-weight: bold;
-    margin-bottom: 20px;
-    color: #007bff;
+    font-size: var(--md-sys-typescale-display-medium-size);
+    font-weight: 700;
+    margin-bottom: var(--md-sys-spacing-md);
+    color: var(--md-sys-color-primary);
+    animation: md3-pulse 1s var(--md-sys-motion-easing-emphasized-decelerate) 0.3s both;
+    line-height: 1.1;
 }
 
-/* 悬浮提示 */
+.result p {
+    font-size: var(--md-sys-typescale-body-large-size);
+    color: var(--md-sys-color-on-primary-container);
+    margin-bottom: var(--md-sys-spacing-sm);
+}
+
+@keyframes md3-pulse {
+    0% { transform: scale(0.8); opacity: 0; }
+    50% { transform: scale(1.08); }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+/* ========================================
+   15. Wrong Questions
+   ======================================== */
+.wrong-questions {
+    margin-top: var(--md-sys-spacing-2xl);
+    padding: 0;
+}
+
+.wrong-questions h2 {
+    padding: 0 var(--md-sys-spacing-sm);
+    margin-bottom: var(--md-sys-spacing-lg);
+}
+
+.wrong-question-item {
+    margin-bottom: var(--md-sys-spacing-xl);
+    background-color: var(--md-sys-color-surface-container-low);
+    border-radius: var(--md-sys-shape-corner-large);
+    border: 1px solid var(--md-sys-color-outline-variant);
+    overflow: hidden;
+    animation: md3-fade-in-up 0.4s var(--md-sys-motion-easing-standard-decelerate);
+}
+
+.wrong-question-item .question-header {
+    margin-bottom: 0;
+    padding: var(--md-sys-spacing-lg) var(--md-sys-spacing-xl);
+    background-color: var(--md-sys-color-error-container);
+    border-bottom: 1px solid color-mix(in srgb, var(--md-sys-color-error) 15%, transparent);
+}
+
+.wrong-question-item .question-header h3 {
+    margin: 0;
+    font-size: var(--md-sys-typescale-title-medium-size);
+    font-weight: var(--md-sys-typescale-title-medium-weight);
+    color: var(--md-sys-color-on-error-container);
+}
+
+.wrong-question-item .question-content {
+    font-size: var(--md-sys-typescale-body-large-size);
+    line-height: 1.75;
+    padding: var(--md-sys-spacing-xl);
+    color: var(--md-sys-color-on-surface);
+}
+
+.wrong-question-item .options {
+    padding: 0 var(--md-sys-spacing-xl) var(--md-sys-spacing-lg);
+}
+
+.wrong-question-item .answers {
+    padding: var(--md-sys-spacing-lg) var(--md-sys-spacing-xl);
+    background-color: var(--md-sys-color-surface-container);
+    border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.wrong-question-item .answers p {
+    margin: var(--md-sys-spacing-xs) 0;
+    font-size: var(--md-sys-typescale-body-medium-size);
+    color: var(--md-sys-color-on-surface);
+}
+
+.wrong-question-item .answers strong {
+    color: var(--md-sys-color-on-surface-variant);
+    font-weight: var(--md-sys-typescale-title-medium-weight);
+}
+
+.wrong-question-item .analysis {
+    margin-top: 0;
+    border-top: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+}
+
+/* ========================================
+   16. Error Message
+   ======================================== */
+.error-message {
+    color: var(--md-sys-color-on-error-container);
+    margin-top: var(--md-sys-spacing-lg);
+    padding: var(--md-sys-spacing-md);
+    background-color: var(--md-sys-color-error-container);
+    border: 1px solid var(--md-sys-color-error);
+    border-radius: var(--md-sys-shape-corner-small);
+    animation: md3-fade-in 0.3s var(--md-sys-motion-easing-standard);
+}
+
+/* ========================================
+   17. Question Bank List & Stats
+   ======================================== */
+.question-bank-list {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 2px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-medium);
+    background-color: var(--md-sys-color-surface-container-lowest);
+}
+
+.question-bank-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.question-bank-list::-webkit-scrollbar-track {
+    background: var(--md-sys-color-surface-container);
+    border-radius: var(--md-sys-shape-corner-full);
+}
+
+.question-bank-list::-webkit-scrollbar-thumb {
+    background: var(--md-sys-color-outline);
+    border-radius: var(--md-sys-shape-corner-full);
+}
+
+.question-bank-list::-webkit-scrollbar-thumb:hover {
+    background: var(--md-sys-color-outline);
+}
+
+/* Scrollbar global */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--md-sys-color-outline);
+}
+
+.question-bank-item {
+    display: flex;
+    align-items: center;
+    gap: var(--md-sys-spacing-md);
+    padding: var(--md-sys-spacing-lg);
+    cursor: pointer;
+    transition: all var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+    user-select: none;
+}
+
+.question-bank-item:last-child {
+    border-bottom: none;
+}
+
+.question-bank-item:hover {
+    background-color: color-mix(in srgb, var(--md-sys-color-primary) 6%, var(--md-sys-color-surface));
+}
+
+.question-bank-item.selected {
+    background-color: color-mix(in srgb, var(--md-sys-color-primary-container) 70%, var(--md-sys-color-surface));
+    border-left: 4px solid var(--md-sys-color-primary);
+    padding-left: calc(var(--md-sys-spacing-lg) - 4px);
+}
+
+.file-icon {
+    font-size: var(--md-sys-typescale-headline-medium-size);
+    flex-shrink: 0;
+    opacity: 0.7;
+}
+
+.file-name {
+    font-size: var(--md-sys-typescale-body-medium-size);
+    color: var(--md-sys-color-on-surface);
+    flex: 1;
+    font-weight: var(--md-sys-typescale-body-medium-weight);
+}
+
+.no-data {
+    padding: var(--md-sys-spacing-2xl);
+    text-align: center;
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: var(--md-sys-typescale-body-medium-size);
+}
+
+.stats {
+    margin-top: var(--md-sys-spacing-xl);
+    padding: var(--md-sys-spacing-xl);
+    background-color: var(--md-sys-color-surface-container);
+    border-radius: var(--md-sys-shape-corner-large);
+    border: 1px solid var(--md-sys-color-outline-variant);
+    animation: md3-fade-in-up 0.3s var(--md-sys-motion-easing-standard-decelerate);
+}
+
+.stats h3 {
+    margin-bottom: var(--md-sys-spacing-lg);
+    color: var(--md-sys-color-on-surface);
+}
+
+.stats ul {
+    list-style-type: none;
+    margin-left: 0;
+}
+
+.stats li {
+    padding: var(--md-sys-spacing-sm) 0;
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: var(--md-sys-typescale-body-medium-size);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.stats li:last-child {
+    border-bottom: none;
+}
+
+
+
+/* ========================================
+   18. Notification Toast - MD3 Snackbar
+   ======================================== */
 .notification {
     position: fixed;
-    top: 20px;
-    right: 20px;
-    padding: 15px 20px;
-    border-radius: 4px;
-    color: #fff;
-    font-weight: bold;
-    z-index: 1000;
-    opacity: 0.9;
-    transition: opacity 0.3s ease;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: var(--md-sys-spacing-lg) var(--md-sys-spacing-xl);
+    border-radius: var(--md-sys-shape-corner-medium);
+    color: var(--md-sys-color-inverse-on-surface);
+    font-size: var(--md-sys-typescale-body-medium-size);
+    font-weight: var(--md-sys-typescale-label-large-weight);
+    z-index: 3000;
+    animation: md3-snackbar-in 0.3s var(--md-sys-motion-easing-emphasized-decelerate);
+    max-width: 90%;
+    min-width: 288px;
+    text-align: center;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+@keyframes md3-snackbar-in {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(40px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0) scale(1);
+    }
 }
 
 .notification.success {
-    background-color: #28a745;
+    background-color: var(--md-sys-color-success);
 }
 
 .notification.error {
-    background-color: #dc3545;
+    background-color: var(--md-sys-color-error);
 }
 
 .notification.info {
-    background-color: #17a2b8;
+    background-color: var(--md-sys-color-primary);
 }
 
 .notification.warning {
-    background-color: #ffc107;
-    color: #333;
+    background-color: var(--md-sys-color-tertiary);
+    color: var(--md-sys-color-on-tertiary);
 }
 
-/* 确认弹窗 */
+/* ========================================
+   19. Modal Dialog - MD3 Dialog
+   ======================================== */
 .modal {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
+    background-color: color-mix(in srgb, var(--md-sys-color-scrim) 40%, transparent);
     display: flex;
     justify-content: center;
     align-items: center;
     z-index: 2000;
+    animation: md3-fade-in 0.2s var(--md-sys-motion-easing-standard);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
 }
 
 .modal-content {
-    background-color: #fff;
-    padding: 30px;
-    border-radius: 8px;
-    width: 80%;
-    max-width: 500px;
+    background-color: var(--md-sys-color-surface-container-high);
+    padding: var(--md-sys-spacing-xl);
+    border-radius: var(--md-sys-shape-corner-large);
+    width: 90%;
+    max-width: 560px;
     text-align: center;
+    animation: md3-scale-in 0.3s var(--md-sys-motion-easing-emphasized-decelerate);
+    max-height: 90vh;
+    overflow-y: auto;
+    border: none;
+}
+
+@keyframes md3-scale-in {
+    from {
+        opacity: 0;
+        transform: scale(0.92) translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+@keyframes md3-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes md3-fade-in-up {
+    from {
+        opacity: 0;
+        transform: translateY(16px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.modal-content h3 {
+    font-size: var(--md-sys-typescale-headline-small-size);
+    font-weight: var(--md-sys-typescale-headline-small-weight);
+    color: var(--md-sys-color-on-surface);
+    margin-bottom: var(--md-sys-spacing-sm);
+}
+
+.modal-content p {
+    font-size: var(--md-sys-typescale-body-medium-size);
+    color: var(--md-sys-color-on-surface-variant);
+    margin-bottom: var(--md-sys-spacing-lg);
 }
 
 .modal-buttons {
-    margin-top: 20px;
+    margin-top: var(--md-sys-spacing-xl);
+    display: flex;
+    gap: var(--md-sys-spacing-sm);
+    justify-content: flex-end;
 }
 
 .modal-buttons .btn {
-    margin-right: 10px;
+    margin-right: 0;
+    min-width: 80px;
 }
 
-/* 答题卡样式 */
-.global-answer-sheet-btn {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    z-index: 1000;
-    padding: 15px;
-    font-size: 18px;
-    margin: 0;
-    border-radius: 0;
-    text-align: center;
-    background-color: #6c757d;
-    color: white;
+.close-btn {
+    background: none;
     border: none;
+    font-size: var(--md-sys-typescale-title-large-size);
     cursor: pointer;
+    color: var(--md-sys-color-on-surface-variant);
+    width: 40px;
+    height: 40px;
+    border-radius: var(--md-sys-shape-corner-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+    line-height: 1;
 }
 
+.close-btn:hover {
+    background-color: var(--md-sys-color-surface-container-highest);
+    color: var(--md-sys-color-on-surface);
+}
+
+/* ========================================
+   21. Answer Sheet Modal
+   ======================================== */
 .answer-sheet-modal {
-    width: 80%;
+    width: 90%;
     max-width: 600px;
     height: 80%;
     max-height: 700px;
     display: flex;
     flex-direction: column;
+    text-align: left;
 }
 
 .modal-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid #eee;
+    margin-bottom: var(--md-sys-spacing-xl);
+    padding-bottom: var(--md-sys-spacing-lg);
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
 
-.close-btn {
-    background: none;
-    border: none;
-    font-size: 24px;
-    cursor: pointer;
-    color: #666;
+.modal-header h3 {
+    margin: 0;
+    font-size: var(--md-sys-typescale-title-large-size);
+    font-weight: var(--md-sys-typescale-title-large-weight);
+    color: var(--md-sys-color-on-surface);
 }
 
 .answer-sheet-content {
     flex: 1;
     overflow-y: auto;
-    padding-right: 10px;
+    padding-right: var(--md-sys-spacing-sm);
 }
 
 .question-group {
-    margin-bottom: 30px;
+    margin-bottom: var(--md-sys-spacing-xl);
 }
 
 .group-title {
-    font-size: 18px;
-    font-weight: bold;
-    margin-bottom: 15px;
-    color: #333;
-    padding-left: 5px;
-    border-left: 4px solid #007bff;
+    font-size: var(--md-sys-typescale-title-small-size);
+    font-weight: var(--md-sys-typescale-title-small-weight);
+    margin-bottom: var(--md-sys-spacing-md);
+    color: var(--md-sys-color-on-surface);
+    padding-left: var(--md-sys-spacing-md);
+    border-left: 4px solid var(--md-sys-color-primary);
+    letter-spacing: 0.02em;
 }
 
 .question-cards {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
+    gap: var(--md-sys-spacing-sm);
 }
 
 .question-card {
-    width: 45px;
-    height: 45px;
-    border: 1px solid #ccc;
-    border-radius: 8px;
+    width: 44px;
+    height: 44px;
+    border: 2px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-small);
     display: flex;
     justify-content: center;
     align-items: center;
-    font-weight: bold;
+    font-weight: var(--md-sys-typescale-title-medium-weight);
+    font-size: var(--md-sys-typescale-body-medium-size);
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+    background-color: var(--md-sys-color-surface-container-lowest);
+    color: var(--md-sys-color-on-surface);
+    font-family: inherit;
+    padding: 0;
+    position: relative;
 }
 
 .question-card:hover {
-    transform: scale(1.1);
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    transform: translateY(-2px) scale(1.05);
+    border-color: var(--md-sys-color-primary);
+    z-index: 1;
 }
 
-/* 响应式设计 */
-@media (max-width: 600px) {
-    .container {
-        margin-top: 20px;
-        padding: 10px;
+.question-card:active {
+    transform: scale(0.92);
+}
+
+/* ========================================
+   22. Answer Sheet - Question Card States
+   ======================================== */
+.question-card.answered {
+    background-color: var(--md-sys-color-primary-container);
+    border-color: var(--md-sys-color-primary);
+    color: var(--md-sys-color-on-primary-container);
+}
+
+.question-card.viewed {
+    background-color: var(--md-sys-color-secondary-container);
+    border-color: var(--md-sys-color-secondary);
+    color: var(--md-sys-color-on-secondary-container);
+}
+
+.question-card.current {
+    border-color: var(--md-sys-color-primary);
+    border-width: 3px;
+}
+
+.question-card.answered.viewed {
+    background: linear-gradient(
+        135deg,
+        var(--md-sys-color-primary-container) 60%,
+        var(--md-sys-color-secondary-container) 100%
+    );
+    border-color: var(--md-sys-color-primary);
+}
+
+/* Dot indicator for answered cards */
+.question-card.answered::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--md-sys-color-primary);
+}
+
+/* ========================================
+   23. Animations & Keyframes
+   ======================================== */
+@keyframes md3-slide-in-right {
+    from {
+        opacity: 0;
+        transform: translateX(100px);
     }
-    
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Staggered animation for question list */
+.wrong-question-item:nth-child(1) { animation-delay: 0s; }
+.wrong-question-item:nth-child(2) { animation-delay: 0.05s; }
+.wrong-question-item:nth-child(3) { animation-delay: 0.1s; }
+.wrong-question-item:nth-child(4) { animation-delay: 0.15s; }
+.wrong-question-item:nth-child(5) { animation-delay: 0.2s; }
+.wrong-question-item:nth-child(n+6) { animation-delay: 0.25s; }
+
+/* ========================================
+   24. Responsive Design
+   ======================================== */
+@media (max-width: 600px) {
+    :root {
+        --md-sys-spacing-xl: 16px;
+        --md-sys-spacing-2xl: 24px;
+        --md-sys-spacing-3xl: 32px;
+    }
+
+    body {
+        padding-left: var(--md-sys-spacing-md);
+        padding-right: var(--md-sys-spacing-md);
+    }
+
+    .container {
+        margin-top: var(--md-sys-spacing-md);
+        padding: var(--md-sys-spacing-lg);
+        border-radius: var(--md-sys-shape-corner-large);
+    }
+
+    h1 {
+        font-size: var(--md-sys-typescale-title-large-size);
+        margin-bottom: var(--md-sys-spacing-xl);
+    }
+
     .btn {
-        display: block;
         width: 100%;
         margin-right: 0;
     }
-    
-    .modal-content {
-        width: 90%;
-        padding: 20px;
+
+    .btn + .btn {
+        margin-top: var(--md-sys-spacing-sm);
     }
-    
+
+    .navigation .nav-left .btn,
+    .navigation .nav-right .btn {
+        width: auto;
+        margin: 0;
+    }
+
+    .nav-center .btn + .btn {
+        margin-top: 0;
+    }
+
+    .nav-center .btn {
+        font-size: var(--md-sys-typescale-label-small-size);
+        height: 40px;
+        line-height: 40px;
+    }
+
+    .modal-content {
+        width: 92%;
+        padding: var(--md-sys-spacing-lg);
+        border-radius: var(--md-sys-shape-corner-large);
+    }
+
     .answer-sheet-modal {
         width: 95%;
-        height: 90%;
+        height: 85%;
+        max-height: none;
     }
-    
+
     .question-card {
         width: 40px;
         height: 40px;
-        font-size: 14px;
+        font-size: var(--md-sys-typescale-body-small-size);
+    }
+
+    .navigation {
+        grid-template-columns: 56px 1fr 56px;
+        padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-lg);
+        padding-bottom: calc(var(--md-sys-spacing-sm) + env(safe-area-inset-bottom, 0px));
+        border-radius: 0;
+    }
+
+    .nav-btn {
+        width: 44px;
+        height: 44px;
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    .nav-center .btn {
+        max-width: 140px;
+        height: 40px;
+        line-height: 40px;
+    }
+
+    .stats-summary {
+        gap: var(--md-sys-spacing-xl);
+        padding: var(--md-sys-spacing-md);
+        flex-wrap: wrap;
+        margin-left: 0;
+        margin-right: 0;
+    }
+
+    .top-bar {
+        padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-md);
+        padding-top: calc(var(--md-sys-spacing-sm) + env(safe-area-inset-top, 0px));
+    }
+
+    .top-bar-center {
+        margin: 0 var(--md-sys-spacing-sm);
+    }
+
+    .top-bar-progress-text {
+        font-size: 10px;
+    }
+
+    .stats-pill {
+        padding: 4px 10px;
+        font-size: var(--md-sys-typescale-label-medium-size);
+        min-width: 60px;
+    }
+
+    .top-bar-btn {
+        width: 40px;
+        height: 40px;
+    }
+
+    .top-bar-btn svg {
+        width: 18px;
+        height: 18px;
+    }
+
+    .question {
+        margin-left: 0;
+        margin-right: 0;
+    }
+
+    .question-header {
+        padding: var(--md-sys-spacing-lg);
+    }
+
+    .question-content {
+        padding: var(--md-sys-spacing-lg);
+        font-size: var(--md-sys-typescale-body-medium-size);
+    }
+
+    .options {
+        padding: 0 var(--md-sys-spacing-lg) var(--md-sys-spacing-lg);
+    }
+
+    .option-item {
+        padding: var(--md-sys-spacing-md);
+    }
+
+    .input-answer {
+        padding: 0 var(--md-sys-spacing-lg) var(--md-sys-spacing-lg);
+    }
+
+    .correct-answer {
+        margin-left: var(--md-sys-spacing-lg);
+        margin-right: var(--md-sys-spacing-lg);
+        padding: var(--md-sys-spacing-md);
+    }
+
+    .analysis {
+        margin-left: var(--md-sys-spacing-lg);
+        margin-right: var(--md-sys-spacing-lg);
+        padding: var(--md-sys-spacing-md);
+    }
+
+    .header {
+        margin-left: 0;
+        margin-right: 0;
+        padding: var(--md-sys-spacing-md) var(--md-sys-spacing-lg);
+        border-radius: var(--md-sys-shape-corner-medium);
+    }
+
+    .score {
+        font-size: var(--md-sys-typescale-headline-large-size);
+    }
+
+    .result {
+        padding: var(--md-sys-spacing-xl) var(--md-sys-spacing-lg);
+        border-radius: var(--md-sys-shape-corner-large);
+    }
+
+    .notification {
+        bottom: 72px;
+        min-width: auto;
+        width: 90%;
+        font-size: var(--md-sys-typescale-body-small-size);
+        padding: var(--md-sys-spacing-md) var(--md-sys-spacing-lg);
+    }
+
+    .wrong-question-item {
+        border-radius: var(--md-sys-shape-corner-large);
+    }
+
+    .wrong-question-item .question-header {
+        padding: var(--md-sys-spacing-md) var(--md-sys-spacing-lg);
+    }
+
+    .wrong-question-item .question-content {
+        padding: var(--md-sys-spacing-lg);
+    }
+
+    .wrong-question-item .options {
+        padding: 0 var(--md-sys-spacing-lg) var(--md-sys-spacing-md);
+    }
+
+    .wrong-question-item .answers {
+        padding: var(--md-sys-spacing-md) var(--md-sys-spacing-lg);
     }
 }
+
+@media (max-width: 400px) {
+    body {
+        padding-left: var(--md-sys-spacing-sm);
+        padding-right: var(--md-sys-spacing-sm);
+    }
+
+    .question-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--md-sys-spacing-sm);
+        padding: var(--md-sys-spacing-md);
+    }
+
+    .question-type {
+        align-self: flex-start;
+    }
+
+    .question-content {
+        padding: var(--md-sys-spacing-md);
+    }
+
+    .options {
+        padding: 0 var(--md-sys-spacing-md) var(--md-sys-spacing-md);
+    }
+
+    .option-item {
+        padding: var(--md-sys-spacing-sm);
+    }
+
+    .input-answer {
+        padding: 0 var(--md-sys-spacing-md) var(--md-sys-spacing-md);
+    }
+
+    .correct-answer {
+        margin-left: var(--md-sys-spacing-md);
+        margin-right: var(--md-sys-spacing-md);
+        padding: var(--md-sys-spacing-sm);
+    }
+
+    .analysis {
+        margin-left: var(--md-sys-spacing-md);
+        margin-right: var(--md-sys-spacing-md);
+        padding: var(--md-sys-spacing-sm);
+    }
+
+    .navigation {
+        grid-template-columns: 52px 1fr 52px;
+        padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-md);
+    }
+
+    .nav-btn {
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+        min-height: 40px;
+    }
+
+    .nav-center .btn {
+        max-width: 120px;
+        height: 36px;
+        line-height: 36px;
+        font-size: var(--md-sys-typescale-label-small-size);
+    }
+
+    .header {
+        padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-md);
+    }
+
+    .stats-summary {
+        gap: var(--md-sys-spacing-lg);
+        padding: var(--md-sys-spacing-sm);
+    }
+
+    .top-bar {
+        padding: var(--md-sys-spacing-xs) var(--md-sys-spacing-sm);
+        padding-top: calc(var(--md-sys-spacing-xs) + env(safe-area-inset-top, 0px));
+    }
+
+    .top-bar-center {
+        margin: 0 var(--md-sys-spacing-xs);
+    }
+
+    .top-bar-progress-text {
+        font-size: 9px;
+    }
+
+    .stats-pill {
+        padding: 3px 8px;
+        font-size: 11px;
+        min-width: 50px;
+    }
+
+    .top-bar-btn {
+        width: 36px;
+        height: 36px;
+    }
+
+    .top-bar-btn svg {
+        width: 16px;
+        height: 16px;
+    }
+}
+
+/* ========================================
+   25. Utility Classes
+   ======================================== */
+.text-center { text-align: center; }
+.text-left { text-align: left; }
+.text-right { text-align: right; }
+
+.mt-sm { margin-top: var(--md-sys-spacing-sm); }
+.mt-md { margin-top: var(--md-sys-spacing-md); }
+.mt-lg { margin-top: var(--md-sys-spacing-lg); }
+.mt-xl { margin-top: var(--md-sys-spacing-xl); }
+
+.mb-sm { margin-bottom: var(--md-sys-spacing-sm); }
+.mb-md { margin-bottom: var(--md-sys-spacing-md); }
+.mb-lg { margin-bottom: var(--md-sys-spacing-lg); }
+.mb-xl { margin-bottom: var(--md-sys-spacing-xl); }
+
+.gap-sm { gap: var(--md-sys-spacing-sm); }
+.gap-md { gap: var(--md-sys-spacing-md); }
+
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
+.flex-wrap { flex-wrap: wrap; }
+.flex-1 { flex: 1; }
+
+.hidden { display: none; }

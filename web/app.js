@@ -31,11 +31,11 @@ createApp({
             },
             studyMode: false, // 背题模式
             autoShowAnswer: false, // 选择答案后自动显示答案
-            shuffleQuestions: false, // 题目乱序
             shuffleOptions: false, // 选项乱序
             localQuestions: [], // 本地存储的题目数据
             localAnswers: {}, // 本地存储的用户答案
-            localViewedAnswers: {} // 本地存储的已查看答案状态
+            localViewedAnswers: {}, // 本地存储的已查看答案状态
+            isDarkMode: false // 深色模式
         };
     },
     computed: {
@@ -120,8 +120,31 @@ createApp({
     async created() {
         // 加载可用的题库文件列表
         await this.loadAvailableFiles();
+        
+        // 检查本地存储的深色模式偏好
+        const savedDarkMode = localStorage.getItem('darkMode');
+        if (savedDarkMode === 'true') {
+            this.isDarkMode = true;
+            document.body.classList.add('dark-mode');
+        }
     },
     methods: {
+        selectFile(file) {
+            /* 选择题库文件 */
+            this.filePath = file;
+        },
+        
+        toggleDarkMode() {
+            this.isDarkMode = !this.isDarkMode;
+            if (this.isDarkMode) {
+                document.body.classList.add('dark-mode');
+                localStorage.setItem('darkMode', 'true');
+            } else {
+                document.body.classList.remove('dark-mode');
+                localStorage.setItem('darkMode', 'false');
+            }
+        },
+        
         showNotification(message, type = 'info') {
             /* 显示悬浮提示 */
             this.notification = {
@@ -141,7 +164,10 @@ createApp({
                 show: true,
                 title: title,
                 message: message,
-                callback: callback
+                callback: (result) => {
+                    this.confirmModal.show = false;
+                    callback(result);
+                }
             };
         },
         
@@ -244,11 +270,6 @@ createApp({
                         questions = questions.map(q => this.shuffleQuestionOptions(q));
                     }
 
-                    // 如果启用了题目乱序，对题目列表进行打乱
-                    if (this.shuffleQuestions) {
-                        questions = this.shuffleArray([...questions]);
-                    }
-
                     this.totalQuestions = data.questions_count;
                     this.localQuestions = questions;
                     this.localAnswers = {}; // 初始化本地答案存储
@@ -274,9 +295,18 @@ createApp({
                     this.userAnswer = this.localAnswers[this.currentIndex] || [];
                     this.isAnswerViewed = this.localViewedAnswers[this.currentIndex] || false;
                     
-                    // 对于填空题/简答题/论述题/编程题，如果没有答案，初始化空数组
-                    if (['填空题', '简答题', '释义题', '论述题', '编程题'].includes(this.currentQuestion.type) && this.userAnswer.length === 0) {
-                        this.userAnswer = [''];
+                    // 对于填空题/简答题/论述题/编程题，根据正确答案数量初始化答案数组
+                    if (['填空题', '简答题', '释义题', '论述题', '编程题'].includes(this.currentQuestion.type)) {
+                        const correctAnswerCount = this.currentQuestion.correct_answer ? this.currentQuestion.correct_answer.length : 1;
+                        if (this.userAnswer.length === 0) {
+                            // 如果没有答案，根据正确答案数量初始化空数组
+                            this.userAnswer = Array(correctAnswerCount).fill('');
+                        } else if (this.userAnswer.length < correctAnswerCount) {
+                            // 如果答案数量少于正确答案数量，补充空答案
+                            while (this.userAnswer.length < correctAnswerCount) {
+                                this.userAnswer.push('');
+                            }
+                        }
                     }
                     // 对于单选题和判断题，如果没有答案，初始化空数组
                     if (['单选题', '判断题'].includes(this.currentQuestion.type) && this.userAnswer.length === 0) {
@@ -508,15 +538,14 @@ createApp({
             this.loadCurrentQuestion();
         },
         
-        getCardStyle(question) {
-            /* 获取题目卡片样式 */
-            if (question.is_viewed) {
-                return 'background-color: #ffff99; /* 黄色 */';
-            } else if (question.is_answered) {
-                return 'background-color: #99ccff; /* 蓝色 */ color: white;';
-            } else {
-                return 'background-color: #ffffff; /* 白色 */';
-            }
+        getCardClasses(question) {
+            /* 获取题目卡片 CSS 类名 */
+            const classes = [];
+            if (question.is_answered) classes.push('answered');
+            if (question.is_viewed) classes.push('viewed');
+            // 当前题目高亮
+            if (question.index === this.currentIndex) classes.push('current');
+            return classes;
         },
         
         getOptionLetter(index) {
@@ -585,6 +614,30 @@ createApp({
             }
         },
         
+        submitAnswer() {
+            /* 提交答案并显示答案（用于多选题、填空题等非单选题型） */
+            this.error = '';
+            try {
+                if (this.currentIndex >= 0 && this.currentIndex < this.localQuestions.length) {
+                    // 检查用户是否已作答
+                    const hasAnswer = this.userAnswer.length > 0 && 
+                                     this.userAnswer.some(ans => ans && ans.trim() !== '');
+                    
+                    if (!hasAnswer) {
+                        this.showNotification('请先作答再提交', 'warning');
+                        return;
+                    }
+                    
+                    // 显示答案
+                    this.viewAnswer();
+                } else {
+                    this.error = '题目索引无效';
+                }
+            } catch (error) {
+                this.error = `提交答案失败: ${error.message}`;
+            }
+        },
+        
         selectMultipleOption(value, optionIndex) {
             /* 多选按钮选择并自动保存 */
             if (!this.isAnswerViewed && !this.studyMode) {
@@ -595,11 +648,6 @@ createApp({
                     this.userAnswer.splice(index, 1);
                 }
                 this._saveCurrentAnswer();
-                
-                // 如果开启了自动显示答案，选择后自动查看答案
-                if (this.autoShowAnswer && !this.isAnswerViewed) {
-                    this.viewAnswer();
-                }
             }
         },
         

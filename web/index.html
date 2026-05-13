@@ -9,10 +9,43 @@
 </head>
 <body>
     <div id="app">
-        <!-- 全局答题卡按钮 -->
-        <button @click="toggleAnswerSheet" class="btn btn-secondary global-answer-sheet-btn" v-if="step === 'answer'">
-            答题卡
-        </button>
+        <!-- 顶栏：深色模式切换按钮 + 进度条 + 答题卡按钮 -->
+        <div class="top-bar" v-if="step === 'answer'">
+            <div class="top-bar-left">
+                <button @click="toggleDarkMode" class="btn btn-secondary nav-btn top-bar-btn">
+                    <svg v-if="!isDarkMode" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                    <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="5"/>
+                        <line x1="12" y1="1" x2="12" y2="3"/>
+                        <line x1="12" y1="21" x2="12" y2="23"/>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                        <line x1="1" y1="12" x2="3" y2="12"/>
+                        <line x1="21" y1="12" x2="23" y2="12"/>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="top-bar-center">
+                <div class="top-bar-progress-text">{{ currentIndex + 1 }}/{{ totalQuestions }}</div>
+                <div class="top-bar-progress">
+                    <div class="top-bar-progress-bar" :style="{ width: progress + '%' }"></div>
+                </div>
+            </div>
+            <div class="top-bar-right">
+                <button @click="toggleAnswerSheet" class="btn btn-secondary nav-btn top-bar-btn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="7" height="7"/>
+                        <rect x="14" y="3" width="7" height="7"/>
+                        <rect x="3" y="14" width="7" height="7"/>
+                        <rect x="14" y="14" width="7" height="7"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
 
         <!-- 悬浮提示 -->
         <div v-if="notification" :class="['notification', notification.type]">
@@ -35,14 +68,24 @@
         <div v-if="step === 'load'" class="container">
             <h1>在线答题系统</h1>
             <div class="form-group">
-                <label for="filePath">选择题库文件：</label>
-                <select id="filePath" v-model="filePath">
-                    <option v-for="file in availableFiles" :key="file" :value="file">
-                        {{ file }}
-                    </option>
-                </select>
+                <label>选择题库：</label>
+                <div class="question-bank-list">
+                    <div 
+                        v-for="file in availableFiles" 
+                        :key="file" 
+                        class="question-bank-item"
+                        :class="{ 'selected': filePath === file }"
+                        @click="selectFile(file)"
+                    >
+                        <span class="file-icon">📄</span>
+                        <span class="file-name">{{ file }}</span>
+                    </div>
+                    <div v-if="availableFiles.length === 0" class="no-data">
+                        暂无可用题库，请将JSON文件放入paper_json目录
+                    </div>
+                </div>
             </div>
-            <button @click="loadQuestions" class="btn btn-primary">加载题库</button>
+            <button @click="loadQuestions" class="btn btn-primary" :disabled="!filePath">加载题库</button>
             <div v-if="error" class="error-message">{{ error }}</div>
             <div v-if="stats" class="stats">
                 <h3>题库统计：</h3>
@@ -79,12 +122,7 @@
             </div>
             <div class="form-group">
                 <label>
-                    <input type="checkbox" v-model="shuffleQuestions"> 题目乱序
-                </label>
-            </div>
-            <div class="form-group" v-if="shuffleQuestions">
-                <label>
-                    <input type="checkbox" v-model="shuffleOptions"> 选项乱序
+                    <input type="checkbox" v-model="shuffleOptions"> 选项乱序（开启后可能导致解析选项和实际选项顺序不同）
                 </label>
             </div>
             <button @click="extractQuestions" class="btn btn-primary" :disabled="totalSelectedQuestions === 0">抽取题目</button>
@@ -93,14 +131,18 @@
 
         <!-- 答题页面 -->
         <div v-if="step === 'answer'" class="container">
+            <!-- 顶部进度栏 -->
             <div class="header">
-                <h1>在线答题</h1>
+                <div class="progress-text">
+                    <span>答题进度</span>
+                    <span>{{ currentIndex + 1 }}/{{ totalQuestions }}</span>
+                </div>
                 <div class="progress">
                     <div class="progress-bar" :style="{ width: progress + '%' }"></div>
-                    <div class="progress-text">{{ currentIndex + 1 }}/{{ totalQuestions }}</div>
                 </div>
             </div>
 
+            <!-- 题目卡片 -->
             <div v-if="currentQuestion" class="question">
                 <div class="question-header">
                     <h2>题目 {{ currentIndex + 1 }}</h2>
@@ -173,7 +215,7 @@
                                 type="checkbox"
                                 :id="'option-' + index"
                                 :value="getOptionLetter(index)"
-                                v-model="userAnswer"
+                                :checked="userAnswer.includes(getOptionLetter(index))"
                                 :disabled="isAnswerViewed || studyMode"
                             >
                             <label
@@ -187,19 +229,38 @@
                             </label>
                         </div>
                     </div>
+                    <!-- 多选题提交按钮 -->
+                    <div v-if="currentQuestion.type === '多选题' && !isAnswerViewed && !studyMode" class="submit-answer-section">
+                        <button @click="submitAnswer" class="btn btn-primary">确定</button>
+                    </div>
                 </div>
 
                 <!-- 填空题/简答题/释义题/论述题/编程题 -->
                 <div v-else-if="['填空题', '简答题', '释义题', '论述题', '编程题'].includes(currentQuestion.type)" class="input-answer">
-                    <div v-for="(answer, index) in userAnswer" :key="index" class="input-item">
+                    <!-- 填空题使用单行文本框 -->
+                    <div v-for="(answer, index) in userAnswer" :key="index" class="input-item" v-if="currentQuestion.type === '填空题'">
                         <input 
                             type="text" 
                             v-model="userAnswer[index]" 
-                            placeholder="请输入答案"
+                            :placeholder="'请输入第' + (index + 1) + '个空的答案'"
                             :disabled="isAnswerViewed || studyMode"
                             @input="autoSaveAnswer"
                             @change="autoSaveAnswer"
                         >
+                    </div>
+                    <!-- 简答题/释义题/论述题/编程题使用多行文本框 -->
+                    <div v-for="(answer, index) in userAnswer" :key="index" class="input-item" v-else>
+                        <textarea 
+                            v-model="userAnswer[index]" 
+                            :placeholder="'请输入第' + (index + 1) + '题的答案'"
+                            :disabled="isAnswerViewed || studyMode"
+                            @input="autoSaveAnswer"
+                            @change="autoSaveAnswer"
+                        ></textarea>
+                    </div>
+                    <!-- 填空题/简答题等提交按钮 -->
+                    <div v-if="!isAnswerViewed && !studyMode" class="submit-answer-section">
+                        <button @click="submitAnswer" class="btn btn-primary">确定</button>
                     </div>
                     <!-- 显示正确答案 -->
                     <div v-if="isAnswerViewed" class="correct-answer">
@@ -218,9 +279,13 @@
             </div>
 
             <div class="navigation">
-                <button @click="prevQuestion" class="btn btn-secondary nav-btn" :disabled="currentIndex === 0">
-                    <span class="arrow-icon">&#8592;</span>
-                </button>
+                <div class="nav-left">
+                    <button @click="prevQuestion" class="btn btn-secondary nav-btn" :disabled="currentIndex === 0">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="15 18 9 12 15 6"/>
+                        </svg>
+                    </button>
+                </div>
                 <div class="nav-center">
                     <button @click="viewAnswer" class="btn btn-info" v-if="!isAnswerViewed && !studyMode">查看答案</button>
                     <button 
@@ -238,9 +303,20 @@
                         提交考试
                     </button>
                 </div>
-                <button @click="nextQuestion" class="btn btn-secondary nav-btn" :disabled="currentIndex === totalQuestions - 1">
-                    <span class="arrow-icon">&#8594;</span>
-                </button>
+                <div class="nav-right">
+                    <button @click="nextQuestion" class="btn btn-secondary nav-btn" :disabled="currentIndex === totalQuestions - 1">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="9 18 15 12 9 6"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 浮动药丸统计 -->
+            <div class="floating-stats-pill" v-if="step === 'answer'">
+                <span class="correct-count">{{ totalCorrect }}</span>
+                <span class="separator">-</span>
+                <span class="wrong-count">{{ totalWrong }}</span>
             </div>
 
             <!-- 统计信息 -->
@@ -271,7 +347,7 @@
                                 v-for="question in group.questions" 
                                 :key="question.index"
                                 class="question-card"
-                                :style="getCardStyle(question)"
+                                :class="getCardClasses(question)"
                                 @click="jumpToQuestion(question.index)"
                             >
                                 {{ question.displayNumber }}
