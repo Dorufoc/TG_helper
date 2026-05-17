@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理员后台 - 用户管理</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="admin.css">
+    <script src="vue.global.js"></script>
+    <script>
+        // 检查并应用保存的主题
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark-mode');
+            document.addEventListener('DOMContentLoaded', () => {
+                document.body.classList.add('dark-mode');
+            });
+        }
+    </script>
+</head>
+<body>
+    <div id="app">
+        <div v-if="notification" :class="['notification', notification.type]">
+            {{ notification.message }}
+        </div>
+
+        <div v-if="confirmModal.show" class="modal-overlay">
+            <div class="modal">
+                <h3>{{ confirmModal.title }}</h3>
+                <p>{{ confirmModal.message }}</p>
+                <div class="modal-actions">
+                    <button @click="confirmModal.onConfirm(true)" class="btn btn-primary">确认</button>
+                    <button @click="confirmModal.onConfirm(false)" class="btn btn-secondary">取消</button>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="!isLoggedIn" class="container login-container">
+            <div class="login-card">
+                <h1>管理员登录</h1>
+                <div class="form-group">
+                    <label>用户名</label>
+                    <input type="text" v-model="loginForm.username" placeholder="请输入用户名" @keyup.enter="handleLogin">
+                </div>
+                <div class="form-group">
+                    <label>密码</label>
+                    <input type="password" v-model="loginForm.password" placeholder="请输入密码" @keyup.enter="handleLogin">
+                </div>
+                <div class="form-group">
+                    <label>验证码</label>
+                    <div class="captcha-row">
+                        <input type="text" v-model="loginForm.captcha" placeholder="请输入验证码" maxlength="4" @keyup.enter="handleLogin">
+                        <img :src="captchaUrl" @click="refreshCaptcha" class="captcha-img" title="点击刷新">
+                    </div>
+                </div>
+                <button @click="handleLogin" class="btn btn-primary btn-block" :disabled="loginLoading">
+                    {{ loginLoading ? '登录中...' : '登录' }}
+                </button>
+                <p v-if="loginError" class="error-message">{{ loginError }}</p>
+            </div>
+        </div>
+
+        <div v-else-if="!isAdmin" class="container access-denied">
+            <h1>权限不足</h1>
+            <p>您需要管理员权限才能访问此页面</p>
+            <button @click="handleLogout" class="btn btn-primary">退出登录</button>
+        </div>
+
+        <div v-else class="admin-container">
+            <header class="admin-header">
+                <h1>管理后台</h1>
+                <div class="header-actions">
+                    <span class="admin-badge">管理员: {{ username }}</span>
+                    <button @click="toggleDarkMode" class="btn btn-secondary">
+                        <svg v-if="!isDarkMode" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                        </svg>
+                        <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="5"/>
+                            <line x1="12" y1="1" x2="12" y2="3"/>
+                            <line x1="12" y1="21" x2="12" y2="23"/>
+                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                            <line x1="1" y1="12" x2="3" y2="12"/>
+                            <line x1="21" y1="12" x2="23" y2="12"/>
+                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                        </svg>
+                    </button>
+                    <button @click="handleLogout" class="btn btn-secondary">退出登录</button>
+                    <a href="/" class="btn btn-primary">返回答题系统</a>
+                </div>
+            </header>
+
+            <div class="admin-tabs">
+                <button 
+                    :class="['tab-btn', { active: activeTab === 'users' }]"
+                    @click="activeTab = 'users'"
+                >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                    用户管理
+                </button>
+                <button 
+                    :class="['tab-btn', { active: activeTab === 'deepseek' }]"
+                    @click="activeTab = 'deepseek'"
+                >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2a10 10 0 1 0 10 10H12V2z"/>
+                        <path d="M20.66 9A10 10 0 0 0 14 2.05V10h8.53z" fill="currentColor" opacity="0.3"/>
+                        <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                    DeepSeek解析
+                </button>
+                <button 
+                    :class="['tab-btn', { active: activeTab === 'question_bank' }]"
+                    @click="activeTab = 'question_bank'"
+                >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="16" y1="13" x2="8" y2="13"/>
+                        <line x1="16" y1="17" x2="8" y2="17"/>
+                        <polyline points="10 9 9 9 8 9"/>
+                    </svg>
+                    题库管理
+                </button>
+                <button 
+                    :class="['tab-btn', { active: activeTab === 'settings' }]"
+                    @click="activeTab = 'settings'"
+                >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                    设置
+                </button>
+            </div>
+
+            <div v-show="activeTab === 'users'">
+                <div class="stats-bar">
+                    <div class="stat-item">
+                        <span class="stat-label">总用户数</span>
+                        <span class="stat-value">{{ users.length }}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">活跃用户</span>
+                        <span class="stat-value active">{{ activeUsers }}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">封禁用户</span>
+                        <span class="stat-value banned">{{ bannedUsers }}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">管理员</span>
+                        <span class="stat-value admin">{{ adminUsers }}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">游客</span>
+                        <span class="stat-value guest">{{ guestUsers }}</span>
+                    </div>
+                </div>
+
+                <div class="users-table-wrapper">
+                    <table class="users-table">
+                        <thead>
+                            <tr>
+                                <th>用户名</th>
+                                <th>密码</th>
+                                <th>邀请码</th>
+                                <th>角色</th>
+                                <th>状态</th>
+                                <th>注册时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="user in users" :key="user.username" :class="{ 'banned-row': user.status === 'banned' }">
+                                <td class="username-cell">{{ user.username }}</td>
+                                <td class="password-cell">
+                                    <span v-if="!user.showPassword">••••••••</span>
+                                    <span v-else>{{ user.password }}</span>
+                                    <button @click="user.showPassword = !user.showPassword" class="icon-btn" title="显示/隐藏密码">
+                                        {{ user.showPassword ? '🙈' : '👁️' }}
+                                    </button>
+                                </td>
+                                <td class="code-cell">
+                                    <span>{{ user.invitation_code }}</span>
+                                    <button @click="resetInvitationCode(user.username)" class="icon-btn" title="重置邀请码">🔄</button>
+                                </td>
+                                <td class="role-cell">
+                                    <select v-model="user.role" @change="updateRole(user)" :disabled="user.username === username">
+                                        <option value="guest">游客</option>
+                                        <option value="user">普通用户</option>
+                                        <option value="admin">管理员</option>
+                                    </select>
+                                </td>
+                                <td class="status-cell">
+                                    <span :class="['status-badge', user.status]">{{ user.status === 'active' ? '正常' : '已封禁' }}</span>
+                                    <button v-if="user.status === 'active'" @click="banUser(user.username)" class="btn btn-danger btn-small" :disabled="user.username === username">封禁</button>
+                                    <button v-else @click="unbanUser(user.username)" class="btn btn-success btn-small" :disabled="user.username === username">解封</button>
+                                </td>
+                                <td class="time-cell">{{ user.created_at }}</td>
+                                <td class="actions-cell">
+                                    <button @click="showChangePasswordModal(user.username)" class="btn btn-secondary btn-small">修改密码</button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div v-show="activeTab === 'deepseek'" class="deepseek-panel">
+                <div class="deepseek-header">
+                    <h2>DeepSeek 题目解析</h2>
+                    <p>使用 AI 为题库中的题目生成详细解析</p>
+                </div>
+
+                <div class="deepseek-config">
+                    <div class="config-section">
+                        <h3>API 配置</h3>
+                        <div class="form-group">
+                            <label>DeepSeek API 密钥</label>
+                            <input 
+                                type="password" 
+                                v-model="deepseek.apiKey" 
+                                placeholder="请输入您的 DeepSeek API 密钥"
+                                :disabled="deepseek.isRunning"
+                            >
+                        </div>
+                    </div>
+
+                    <div class="config-section">
+                        <h3>选择题库文件</h3>
+                        <div class="form-group">
+                            <label>题库文件</label>
+                            <select v-model="deepseek.selectedFile" @change="loadFileStats" :disabled="deepseek.isRunning">
+                                <option value="">请选择题库文件</option>
+                                <option v-for="file in deepseek.files" :key="file.filename" :value="file.filename">{{ file.display_name }}</option>
+                            </select>
+                        </div>
+                        
+                        <div v-if="deepseek.stats" class="file-stats">
+                            <div class="stat-row">
+                                <span class="stat-label">总题数：</span>
+                                <span class="stat-value">{{ deepseek.stats.total }}</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label">已有解析：</span>
+                                <span class="stat-value success">{{ deepseek.stats.with_analysis }}</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label">待解析：</span>
+                                <span class="stat-value warning">{{ deepseek.stats.without_analysis }}</span>
+                            </div>
+                            <div v-if="deepseek.stats.stats" class="type-stats">
+                                <h4>题型分布：</h4>
+                                <div class="type-tag" v-for="(count, type) in deepseek.stats.stats" :key="type">
+                                    {{ type }}: {{ count }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="deepseek-actions">
+                    <button 
+                        @click="startParsing" 
+                        class="btn btn-primary"
+                        :disabled="deepseek.isRunning || !deepseek.apiKey || !deepseek.selectedFile"
+                    >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="5 3 19 12 5 21 5 3"/>
+                        </svg>
+                        开始解析
+                    </button>
+                    <button 
+                        @click="stopParsing" 
+                        class="btn btn-danger"
+                        :disabled="!deepseek.isRunning"
+                    >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                        </svg>
+                        停止解析
+                    </button>
+                </div>
+
+                <div v-if="deepseek.isRunning || deepseek.logs.length > 0" class="deepseek-progress">
+                    <div class="progress-header">
+                        <h3>解析进度</h3>
+                        <span class="progress-status" :class="deepseek.status">{{ deepseek.statusText }}</span>
+                    </div>
+                    
+                    <div class="progress-bar-wrapper">
+                        <div class="progress-bar-container">
+                            <div 
+                                class="progress-bar-fill" 
+                                :style="{ width: deepseekProgressPercent + '%' }"
+                            ></div>
+                        </div>
+                        <span class="progress-percent">{{ deepseekProgressPercent }}%</span>
+                    </div>
+                    
+                    <div class="progress-info">
+                        <span>已处理: {{ deepseek.processed }} / {{ deepseek.total }}</span>
+                    </div>
+                </div>
+
+                <div v-if="deepseek.logs.length > 0" class="deepseek-logs">
+                    <h3>解析日志</h3>
+                    <div class="logs-container">
+                        <div v-for="(log, index) in deepseek.logs" :key="index" class="log-line">
+                            <span class="log-time">{{ log.time }}</span>
+                            <span class="log-message">{{ log.message }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div v-show="activeTab === 'question_bank'" class="question-bank-panel">
+                <div class="question-bank-header">
+                    <h2>题库管理</h2>
+                    <p>管理服务器中的所有题库文件，支持上传、重命名、删除和查看统计</p>
+                </div>
+
+                <div class="question-bank-actions-row">
+                    <button @click="showUploadModal = true" class="btn btn-primary">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                        上传题库
+                    </button>
+                    <button @click="loadQuestionBankList" class="btn btn-secondary">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="23 4 23 10 17 10"/>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                        </svg>
+                        刷新列表
+                    </button>
+                </div>
+
+                <div v-if="questionBankList.length === 0" class="empty-state">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="16" y1="13" x2="8" y2="13"/>
+                        <line x1="16" y1="17" x2="8" y2="17"/>
+                    </svg>
+                    <p>暂无题库文件</p>
+                    <button @click="showUploadModal = true" class="btn btn-primary btn-small">上传第一个题库</button>
+                </div>
+
+                <div v-else class="question-bank-grid">
+                    <div v-for="file in questionBankList" :key="file.filename" class="question-bank-card">
+                        <div class="card-header">
+                            <h3 class="card-title">{{ file.display_name }}</h3>
+                            <span v-if="file.error" class="error-badge">读取失败</span>
+                            <span v-else class="count-badge">{{ file.total }} 题</span>
+                        </div>
+                        
+                        <div v-if="!file.error && file.stats" class="card-stats">
+                            <div class="stat-item-compact" v-for="(count, type) in file.stats" :key="type">
+                                <span class="type-name">{{ type }}</span>
+                                <span class="type-count">{{ count }}</span>
+                            </div>
+                        </div>
+
+                        <div class="card-meta">
+                            <span class="file-size">{{ formatFileSize(file.file_size) }}</span>
+                            <span class="modified-time">{{ file.modified_at }}</span>
+                        </div>
+
+                        <div class="card-actions">
+                            <button @click="showRenameModal(file)" class="btn btn-secondary btn-small">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+                                </svg>
+                                重命名
+                            </button>
+                            <button @click="confirmDeleteFile(file)" class="btn btn-danger btn-small">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                </svg>
+                                删除
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div v-show="activeTab === 'settings'" class="settings-panel">
+                <div class="settings-header">
+                    <h2>系统设置</h2>
+                    <p>配置账号系统和AI服务商相关参数</p>
+                </div>
+
+                <div class="settings-content">
+                    <div class="config-section account-config">
+                        <h3>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                <circle cx="9" cy="7" r="4"/>
+                                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                            </svg>
+                            账号系统配置
+                        </h3>
+                        <div class="form-group">
+                            <label>新用户默认身份</label>
+                            <select v-model="settings.account.default_role">
+                                <option value="guest">游客</option>
+                                <option value="user">普通用户</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>在线鉴权超时时间（分钟）</label>
+                            <input 
+                                type="number" 
+                                v-model.number="settings.account.auth_timeout_minutes" 
+                                min="1" 
+                                max="60"
+                                placeholder="默认1分钟"
+                            >
+                        </div>
+                    </div>
+
+                    <div class="config-section ai-config">
+                        <h3>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 2a10 10 0 1 0 10 10H12V2z"/>
+                                <path d="M20.66 9A10 10 0 0 0 14 2.05V10h8.53z" fill="currentColor" opacity="0.3"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                            AI服务商配置
+                        </h3>
+
+                        <div class="ai-provider-tabs">
+                            <button 
+                                :class="['ai-tab-btn', { active: activeAiProvider === 'openai' }]"
+                                @click="activeAiProvider = 'openai'"
+                            >
+                                OpenAI
+                            </button>
+                            <button 
+                                :class="['ai-tab-btn', { active: activeAiProvider === 'anthropic' }]"
+                                @click="activeAiProvider = 'anthropic'"
+                            >
+                                Anthropic
+                            </button>
+                            <button 
+                                :class="['ai-tab-btn', { active: activeAiProvider === 'deepseek' }]"
+                                @click="activeAiProvider = 'deepseek'"
+                            >
+                                DeepSeek
+                            </button>
+                        </div>
+
+                        <div v-show="activeAiProvider === 'openai'" class="ai-provider-form">
+                            <div class="form-group">
+                                <label>请求URL</label>
+                                <input 
+                                    type="text" 
+                                    v-model="settings.ai_providers.openai.base_url" 
+                                    placeholder="https://api.openai.com"
+                                >
+                            </div>
+                            <div class="form-group">
+                                <label>API Key</label>
+                                <input 
+                                    type="password" 
+                                    v-model="settings.ai_providers.openai.api_key" 
+                                    placeholder="请输入OpenAI API Key"
+                                >
+                            </div>
+                            <div class="form-group">
+                                <label>模型ID</label>
+                                <input 
+                                    type="text" 
+                                    v-model="settings.ai_providers.openai.model_id" 
+                                    placeholder="gpt-4o"
+                                >
+                            </div>
+                            <div class="form-group">
+                                <label>最大Token数（可选）</label>
+                                <input 
+                                    type="number" 
+                                    v-model.number="settings.ai_providers.openai.max_tokens" 
+                                    min="1"
+                                    placeholder="4096"
+                                >
+                            </div>
+                        </div>
+
+                        <div v-show="activeAiProvider === 'anthropic'" class="ai-provider-form">
+                            <div class="form-group">
+                                <label>请求URL</label>
+                                <input 
+                                    type="text" 
+                                    v-model="settings.ai_providers.anthropic.base_url" 
+                                    placeholder="https://api.anthropic.com"
+                                >
+                            </div>
+                            <div class="form-group">
+                                <label>API Key</label>
+                                <input 
+                                    type="password" 
+                                    v-model="settings.ai_providers.anthropic.api_key" 
+                                    placeholder="请输入Anthropic API Key"
+                                >
+                            </div>
+                            <div class="form-group">
+                                <label>模型ID</label>
+                                <input 
+                                    type="text" 
+                                    v-model="settings.ai_providers.anthropic.model_id" 
+                                    placeholder="claude-3-5-sonnet-latest"
+                                >
+                            </div>
+                            <div class="form-group">
+                                <label>最大Token数（必填）</label>
+                                <input 
+                                    type="number" 
+                                    v-model.number="settings.ai_providers.anthropic.max_tokens" 
+                                    min="1"
+                                    placeholder="4096"
+                                >
+                                <span class="form-hint">Anthropic API要求必须提供max_tokens参数</span>
+                            </div>
+                            <div class="form-note">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <line x1="12" y1="16" x2="12" y2="12"/>
+                                    <line x1="12" y1="8" x2="12.01" y2="8"/>
+                                </svg>
+                                Anthropic格式要求：System Prompt放在根目录，消息必须user/assistant交替
+                            </div>
+                        </div>
+
+                        <div v-show="activeAiProvider === 'deepseek'" class="ai-provider-form">
+                            <div class="form-group">
+                                <label>API格式</label>
+                                <select v-model="settings.ai_providers.deepseek.api_format">
+                                    <option value="openai">OpenAI格式（https://api.deepseek.com）</option>
+                                    <option value="anthropic">Anthropic格式（https://api.deepseek.com/anthropic）</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>请求URL</label>
+                                <input 
+                                    type="text" 
+                                    v-model="settings.ai_providers.deepseek.base_url" 
+                                    :placeholder="settings.ai_providers.deepseek.api_format === 'openai' ? 'https://api.deepseek.com' : 'https://api.deepseek.com/anthropic'"
+                                >
+                            </div>
+                            <div class="form-group">
+                                <label>API Key</label>
+                                <input 
+                                    type="password" 
+                                    v-model="settings.ai_providers.deepseek.api_key" 
+                                    placeholder="请输入DeepSeek API Key"
+                                >
+                            </div>
+                            <div class="form-group">
+                                <label>模型ID</label>
+                                <select v-model="settings.ai_providers.deepseek.model_id">
+                                    <option value="deepseek-v4-pro">deepseek-v4-pro（高性能专家模型）</option>
+                                    <option value="deepseek-v4-flash">deepseek-v4-flash（高性价比轻量模型）</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>思维流控制 - 深度思考</label>
+                                <select v-model="settings.ai_providers.deepseek.thinking">
+                                    <option value="enabled">开启（enabled）</option>
+                                    <option value="disabled">关闭（disabled）</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>思维流控制 - 思考深度</label>
+                                <select v-model="settings.ai_providers.deepseek.reasoning_effort">
+                                    <option value="high">高（high）</option>
+                                    <option value="low">低（low）</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-actions">
+                        <button @click="saveSettings" class="btn btn-primary" :disabled="savingSettings">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                                <polyline points="17 21 17 13 7 13 7 21"/>
+                                <polyline points="7 3 7 8 15 8"/>
+                            </svg>
+                            {{ savingSettings ? '保存中...' : '保存设置' }}
+                        </button>
+                        <button @click="loadSettings" class="btn btn-secondary">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="23 4 23 10 17 10"/>
+                                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                            </svg>
+                            重新加载
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+                <div class="modal">
+                    <h3>修改用户密码</h3>
+                    <p class="modal-username">用户: {{ changePasswordModal.username }}</p>
+                    <div class="form-group">
+                        <label>新密码</label>
+                        <input type="password" v-model="changePasswordModal.newPassword" placeholder="请输入新密码（至少6个字符）">
+                    </div>
+                    <div class="form-group">
+                        <label>确认密码</label>
+                        <input type="password" v-model="changePasswordModal.confirmPassword" placeholder="请再次输入新密码">
+                    </div>
+                    <div class="modal-actions">
+                        <button @click="handleChangePassword" class="btn btn-primary">确认修改</button>
+                        <button @click="changePasswordModal.show = false" class="btn btn-secondary">取消</button>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="showUploadModal" class="modal-overlay" @click.self="showUploadModal = false">
+                <div class="modal upload-modal">
+                    <h3>上传题库</h3>
+                    <p class="modal-description">仅支持JSON格式的题库文件，拖拽到下方区域或点击选择文件</p>
+                    
+                    <div 
+                        class="upload-drop-zone" 
+                        :class="{ 'drag-over': isDragOver, 'uploading': uploadProgress > 0 }"
+                        @dragover.prevent="handleDragOver"
+                        @dragenter.prevent="isDragOver = true"
+                        @dragleave.prevent="isDragOver = false"
+                        @drop.prevent="handleFileDrop"
+                        @click="triggerFileInput"
+                    >
+                        <input 
+                            ref="fileInput"
+                            type="file" 
+                            accept=".json" 
+                            @change="handleFileSelect"
+                            style="display: none"
+                        >
+                        <div v-if="uploadProgress === 0" class="upload-placeholder">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="17 8 12 3 7 8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                            <p v-if="!selectedUploadFile">拖拽JSON文件到此处，或点击选择</p>
+                            <p v-else class="selected-file-name">{{ selectedUploadFile.name }}</p>
+                        </div>
+                        <div v-else class="upload-progress">
+                            <div class="progress-bar-container">
+                                <div class="progress-bar-fill" :style="{ width: uploadProgress + '%' }"></div>
+                            </div>
+                            <span class="progress-text">上传中... {{ uploadProgress }}%</span>
+                        </div>
+                    </div>
+
+                    <div class="modal-actions">
+                        <button @click="handleUpload" class="btn btn-primary" :disabled="!selectedUploadFile || uploadProgress > 0">
+                            确认上传
+                        </button>
+                        <button @click="closeUploadModal" class="btn btn-secondary" :disabled="uploadProgress > 0">取消</button>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="showRenameModalFlag" class="modal-overlay" @click.self="showRenameModalFlag = false">
+                <div class="modal">
+                    <h3>重命名题库</h3>
+                    <p class="modal-username">当前名称: {{ renameForm.oldName }}</p>
+                    <div class="form-group">
+                        <label>新名称</label>
+                        <input 
+                            type="text" 
+                            v-model="renameForm.newName" 
+                            placeholder="请输入新名称"
+                            @keyup.enter="handleRename"
+                        >
+                    </div>
+                    <div class="modal-actions">
+                        <button @click="handleRename" class="btn btn-primary" :disabled="!renameForm.newName.trim()">确认重命名</button>
+                        <button @click="showRenameModalFlag = false" class="btn btn-secondary">取消</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="api_encryption.js"></script>
+    <script src="admin.js"></script>
+</body>
+</html>

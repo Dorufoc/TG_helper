@@ -1,5 +1,53 @@
 const { createApp } = Vue;
 
+function generateDeviceId() {
+    /* 生成设备随机ID，存储在localStorage中以便持久化 */
+    let deviceId = localStorage.getItem('deviceId');
+    if (!deviceId) {
+        deviceId = 'dev-' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+        localStorage.setItem('deviceId', deviceId);
+    }
+    return deviceId;
+}
+
+const DEVICE_ID = generateDeviceId();
+let CURRENT_USERNAME = null; // 全局用户名状态
+
+function setLoggedInUsername(username) {
+    /* 设置当前登录的用户名 */
+    CURRENT_USERNAME = username;
+}
+
+function getAuthHeaders() {
+    /* 获取带有用户身份信息的请求头 */
+    let userIdentity;
+    if (CURRENT_USERNAME) {
+        userIdentity = CURRENT_USERNAME;
+    } else {
+        userIdentity = `unknown-${DEVICE_ID}`;
+    }
+    
+    return {
+        'X-User-Identity': userIdentity
+    };
+}
+
+async function apiFetch(url, options = {}) {
+    /* 统一的请求方法，自动添加用户身份信息 */
+    const authHeaders = getAuthHeaders();
+    const mergedHeaders = {
+        ...authHeaders,
+        ...(options.headers || {})
+    };
+    
+    const response = await fetch(url, {
+        ...options,
+        headers: mergedHeaders
+    });
+    
+    return response;
+}
+
 createApp({
     data() {
         return {
@@ -44,7 +92,34 @@ createApp({
                 deltaX: 0,
                 deltaY: 0,
                 active: false
-            }
+            },
+            // 登录/注册相关
+            showLoginModal: true, // 显示登录弹窗
+            authMode: 'login', // login 或 register
+            authForm: {
+                username: '',
+                password: '',
+                confirmPassword: '',
+                captcha: '',
+                inviteCode: '',
+                rememberPassword: false
+            },
+            authLoading: false,
+            authError: '',
+            captchaUrl: '/api/captcha?t=' + Date.now(),
+            isLoggedIn: false,
+            currentUser: null,
+            userRole: 'user',
+            showMaintenanceModal: true,
+            showGuestAlert: false, // 游客提示弹窗
+            userCheckTimer: null, // 用户验证定时器
+            guestAlertShown: false, // 游客弹窗是否已显示过（单次会话）
+            userCheckFailedCount: 0, // 用户验证失败次数
+            userCheckAbortController: null, // 当前验证请求的AbortController
+            // 错题本相关
+            wrongBooks: [], // 用户的错题本列表
+            showWrongBooks: false, // 是否展开错题本区域
+            currentQuestionBankName: '' // 当前使用的题库名称
         };
     },
     computed: {
@@ -133,14 +208,44 @@ createApp({
         }
     },
     async created() {
+        // 检查登录状态
+        await this.checkLoginStatus();
+        
+        // 检测游客权限并显示维护弹窗
+        this.checkGuestAccess();
+        
+        // 启动定时用户验证
+        this.startUserCheck();
+        
         // 加载可用的题库文件列表
         await this.loadAvailableFiles();
+        
+        // 如果已登录，加载错题本列表
+        if (this.isLoggedIn) {
+            await this.loadWrongBooks();
+        }
         
         // 检查本地存储的深色模式偏好
         const savedDarkMode = localStorage.getItem('darkMode');
         if (savedDarkMode === 'true') {
             this.isDarkMode = true;
             document.body.classList.add('dark-mode');
+        }
+        
+        // 注册全局键盘事件监听
+        this._boundHandleKeyboard = this.handleKeyboard.bind(this);
+        document.addEventListener('keydown', this._boundHandleKeyboard);
+    },
+    beforeDestroy() {
+        // 清理定时器
+        if (this.userCheckTimer) {
+            clearInterval(this.userCheckTimer);
+            this.userCheckTimer = null;
+        }
+        
+        // 移除全局键盘事件监听
+        if (this._boundHandleKeyboard) {
+            document.removeEventListener('keydown', this._boundHandleKeyboard);
         }
     },
     methods: {
@@ -190,7 +295,12 @@ createApp({
             /* 加载可用的题库文件列表 */
             this.error = '';
             try {
-                const response = await fetch('/api/available_files');
+                const response = await apiFetch('/api/available_files');
+                if (response.status === 401) {
+                    this.showLoginModal = true;
+                    this.refreshCaptcha();
+                    return;
+                }
                 const data = await response.json();
                 if (data.success) {
                     this.availableFiles = data.files;
@@ -205,20 +315,131 @@ createApp({
             }
         },
         
+        async loadWrongBooks() {
+            /* 加载用户的错题本列表 */
+            if (!this.isLoggedIn) {
+                return;
+            }
+            try {
+                const response = await apiFetch('/api/available_wrong_books');
+                if (response.status === 401) {
+                    this.showLoginModal = true;
+                    this.refreshCaptcha();
+                    return;
+                }
+                const data = await response.json();
+                if (data.success) {
+                    this.wrongBooks = data.books;
+                }
+            } catch (error) {
+                console.error('加载错题本列表失败:', error);
+            }
+        },
+        
+        toggleWrongBooks() {
+            /* 切换错题本区域的展开/折叠状态 */
+            this.showWrongBooks = !this.showWrongBooks;
+            if (this.showWrongBooks && this.isLoggedIn) {
+                this.loadWrongBooks();
+            }
+        },
+        
+        async loadWrongBookForPractice(fileName) {
+            /* 加载错题本进行答题 */
+            try {
+                const response = await apiFetch(`/api/load_wrong_book/${encodeURIComponent(fileName)}`);
+                if (response.status === 401) {
+                    this.showLoginModal = true;
+                    this.refreshCaptcha();
+                    return;
+                }
+                const data = await response.json();
+                if (data.success) {
+                    this.localQuestions = data.questions;
+                    this.localAnswers = {};
+                    this.localViewedAnswers = {};
+                    this.currentIndex = 0;
+                    this.totalQuestions = data.total_questions;
+                    this.currentQuestion = this.localQuestions[0];
+                    this.initUserAnswer();
+                    this.step = 'answer';
+                    this.showNotification(`已加载错题本: ${data.title}`, 'success');
+                } else {
+                    this.showNotification(`加载错题本失败: ${data.message}`, 'error');
+                }
+            } catch (error) {
+                this.showNotification('加载错题本失败', 'error');
+            }
+        },
+        
+        initUserAnswer() {
+            /* 初始化当前题目的用户答案 */
+            if (!this.currentQuestion) return;
+            const type = this.currentQuestion.type;
+            if (['单选题', '多选题', '判断题', '选择题'].includes(type)) {
+                this.userAnswer = [];
+            } else if (['填空题', '简答题', '释义题', '论述题', '编程题'].includes(type)) {
+                const count = this.currentQuestion.correct_answer ? this.currentQuestion.correct_answer.length : 1;
+                this.userAnswer = new Array(count).fill('');
+            } else {
+                this.userAnswer = [];
+            }
+            this.isAnswerViewed = false;
+            this.correctAnswer = [];
+        },
+        
+        async deleteWrongBook(fileName, bookTitle) {
+            /* 删除错题本 */
+            this.showConfirm(
+                '确认删除',
+                `确定要删除错题本「${bookTitle}」吗？删除后将无法恢复。`,
+                async (confirmed) => {
+                    if (!confirmed) return;
+                    try {
+                        const response = await apiFetch(`/api/delete_wrong_book/${encodeURIComponent(fileName)}`, {
+                            method: 'POST'
+                        });
+                        if (response.status === 401) {
+                            this.showLoginModal = true;
+                            this.refreshCaptcha();
+                            return;
+                        }
+                        const data = await response.json();
+                        if (data.success) {
+                            this.showNotification('错题本已删除', 'success');
+                            // 刷新错题本列表
+                            await this.loadWrongBooks();
+                        } else {
+                            this.showNotification(`删除失败: ${data.message}`, 'error');
+                        }
+                    } catch (error) {
+                        this.showNotification('删除失败', 'error');
+                    }
+                }
+            );
+        },
+        
         async loadQuestions() {
             /* 加载题库 */
             this.error = '';
             try {
-                const response = await fetch('/api/load_questions', {
+                const response = await apiFetch('/api/load_questions', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({ file_path: this.filePath })
                 });
+
+                if (response.status === 401) {
+                    this.showLoginModal = true;
+                    this.refreshCaptcha();
+                    return;
+                }
                 
                 const data = await response.json();
                 if (data.success) {
+                    this.currentQuestionBankName = this.filePath.replace('.json', '');
                     this.stats = {
                         total_questions: data.total_questions,
                         stats: data.stats
@@ -265,14 +486,14 @@ createApp({
                     return;
                 }
                 
-                const response = await fetch('/api/extract_questions', {
+                const response = await apiFetch('/api/extract_questions', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
                         total_count: this.totalSelectedQuestions,
-                        type_ratios: filteredCounts // 这里使用type_ratios参数名保持兼容
+                        type_ratios: filteredCounts
                     })
                 });
                 
@@ -353,7 +574,7 @@ createApp({
         async fetchCorrectAnswer() {
             /* 获取正确答案 */
             try {
-                const response = await fetch(`/api/questions/${this.currentIndex}/view_answer`, {
+                const response = await apiFetch(`/api/questions/${this.currentIndex}/view_answer`, {
                     method: 'POST'
                 });
                 
@@ -750,26 +971,21 @@ createApp({
         },
         
         async generateWrongQuestionsBook() {
-            /* 生成错题本：将错题序号和作答内容发送到后端，由后端根据完整题库反推错题集 */
+            /* 生成错题本：将完整错题数据发送到后端生成错题集 */
             if (!this.result || !this.result.wrong_questions || this.result.wrong_questions.length === 0) {
                 this.showNotification('没有错题可以生成错题本', 'info');
                 return;
             }
             
             try {
-                // 收集错题序号和对应作答内容
+                // 直接发送完整的错题数据到后端
                 const wrongQuestionData = {
-                    wrong_indices: this.result.wrong_questions.map(q => q.id), // 错题序号
-                    user_answers: {} // 对应作答内容
+                    wrong_questions: this.result.wrong_questions,
+                    original_name: this.currentQuestionBankName || '错题本'
                 };
                 
-                // 填充用户作答内容
-                this.result.wrong_questions.forEach(q => {
-                    wrongQuestionData.user_answers[q.id] = q.user_answer;
-                });
-                
                 // 发送请求到后端，生成错题集
-                const response = await fetch('/api/generate_wrong_book', {
+                const response = await apiFetch('/api/generate_wrong_book', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -780,6 +996,8 @@ createApp({
                 const data = await response.json();
                 if (data.success) {
                     this.showNotification('错题本已成功生成并保存', 'success');
+                    // 重新加载错题本列表
+                    await this.loadWrongBooks();
                 } else {
                     this.showNotification(`生成错题本失败: ${data.message}`, 'error');
                 }
@@ -878,6 +1096,541 @@ createApp({
                 this.showNotification('复制失败，请手动复制', 'error');
             }
             document.body.removeChild(textarea);
-        }
+        },
+        
+        renderMarkdown(text) {
+            /* 将Markdown文本渲染为HTML */
+            if (!text) return '';
+            // 先转义HTML标签，防止<details>、<summary>等被解析为DOM元素
+            // 但保留代码块中的HTML标签
+            const escapedText = this.escapeHtmlTagsInMarkdown(text);
+            // 使用marked.js进行Markdown渲染
+            return marked.parse(escapedText);
+        },
+
+        escapeHtmlTagsInMarkdown(text) {
+            /* 转义Markdown中的HTML标签，但保留代码块内的内容 */
+            // 分割代码块和普通文本
+            const parts = [];
+            const codeBlockRegex = /(```[\s\S]*?```|`[^`]*`)/g;
+            let lastIndex = 0;
+            let match;
+
+            while ((match = codeBlockRegex.exec(text)) !== null) {
+                // 添加代码块前的普通文本
+                if (match.index > lastIndex) {
+                    parts.push({
+                        type: 'text',
+                        content: text.substring(lastIndex, match.index)
+                    });
+                }
+                // 添加代码块
+                parts.push({
+                    type: 'code',
+                    content: match[0]
+                });
+                lastIndex = match.index + match[0].length;
+            }
+
+            // 添加剩余文本
+            if (lastIndex < text.length) {
+                parts.push({
+                    type: 'text',
+                    content: text.substring(lastIndex)
+                });
+            }
+
+            // 处理每个部分
+            return parts.map(part => {
+                if (part.type === 'code') {
+                    // 代码块保持原样
+                    return part.content;
+                } else {
+                    // 普通文本中，将 <tag> 格式转换为 &lt;tag&gt;
+                    // 匹配类似 <collection>、<if>、<details> 等标签格式
+                    return part.content.replace(/<([a-zA-Z][a-zA-Z0-9-]*)>/g, '&lt;$1&gt;')
+                                       .replace(/<\/([a-zA-Z][a-zA-Z0-9-]*)>/g, '&lt;/$1&gt;');
+                }
+            }).join('');
+        },
+
+        // ==================== 登录/注册相关方法 ====================
+
+        async checkLoginStatus() {
+            /* 检查登录状态 */
+            try {
+                const response = await apiFetch('/api/check_login');
+                const data = await response.json();
+                if (data.success && data.logged_in) {
+                    this.isLoggedIn = true;
+                    this.currentUser = data.username;
+                    this.userRole = data.role || 'user';
+                    this.showLoginModal = false;
+                    this.showMaintenanceModal = (this.userRole === 'guest');
+                    setLoggedInUsername(data.username);
+                } else {
+                    this.isLoggedIn = false;
+                    this.currentUser = null;
+                    this.userRole = 'user';
+                    this.showLoginModal = true;
+                    this.showMaintenanceModal = false;
+                    setLoggedInUsername(null);
+                    this.refreshCaptcha();
+                    // 加载记住的用户名和密码
+                    this.loadRememberedCredentials();
+                }
+            } catch (error) {
+                console.error('检查登录状态失败:', error);
+                this.showLoginModal = true;
+                this.showMaintenanceModal = false;
+                this.refreshCaptcha();
+                // 加载记住的用户名和密码
+                this.loadRememberedCredentials();
+            }
+        },
+        async checkBannedStatus() {
+            /* 检查当前用户是否被封禁 */
+            try {
+                const response = await apiFetch('/api/check_login');
+                const data = await response.json();
+                if (data.banned) {
+                    this.showNotification('当前用户已被封禁，请退出账户重新登录', 'error');
+                    await this.handleLogout();
+                    return true;
+                }
+                return false;
+            } catch (error) {
+                return false;
+            }
+        },
+
+        refreshCaptcha() {
+            /* 刷新验证码 */
+            this.captchaUrl = '/api/captcha?t=' + Date.now();
+            this.authForm.captcha = '';
+        },
+
+        loadRememberedCredentials() {
+            /* 加载记住的用户名和密码 */
+            try {
+                const remembered = localStorage.getItem('rememberedUser');
+                if (remembered) {
+                    const user = JSON.parse(remembered);
+                    this.authForm.username = user.username || '';
+                    this.authForm.password = user.password || '';
+                    this.authForm.rememberPassword = true;
+                }
+            } catch (error) {
+                console.error('加载记住的凭据失败:', error);
+            }
+        },
+
+        resetAuthForm() {
+            /* 重置登录/注册表单 */
+            this.authForm = {
+                username: this.authForm.username,
+                password: '',
+                confirmPassword: '',
+                captcha: '',
+                inviteCode: '',
+                rememberPassword: this.authForm.rememberPassword
+            };
+            this.authError = '';
+        },
+
+        async handleLogin() {
+            /* 处理登录 */
+            this.authError = '';
+
+            if (!this.authForm.username) {
+                this.authError = '请输入用户名';
+                return;
+            }
+            if (!this.authForm.password) {
+                this.authError = '请输入密码';
+                return;
+            }
+            if (!this.authForm.captcha) {
+                this.authError = '请输入验证码';
+                return;
+            }
+
+            this.authLoading = true;
+            try {
+                const response = await apiFetch('/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: this.authForm.username,
+                        password: this.authForm.password,
+                        captcha: this.authForm.captcha
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    // 保存或清除记住的密码
+                    if (this.authForm.rememberPassword) {
+                        localStorage.setItem('rememberedUser', JSON.stringify({
+                            username: this.authForm.username,
+                            password: this.authForm.password
+                        }));
+                    } else {
+                        localStorage.removeItem('rememberedUser');
+                    }
+
+                    this.isLoggedIn = true;
+                    this.currentUser = data.username;
+                    this.userRole = data.role || 'user';
+                    this.showLoginModal = false;
+                    this.showMaintenanceModal = (this.userRole === 'guest');
+                    setLoggedInUsername(data.username);
+                    this.showNotification('登录成功，欢迎 ' + data.username, 'success');
+                    this.resetAuthForm();
+                    // 重新加载题库文件列表
+                    await this.loadAvailableFiles();
+                    // 加载错题本列表
+                    await this.loadWrongBooks();
+                } else {
+                    this.authError = data.message;
+                    this.refreshCaptcha();
+                }
+            } catch (error) {
+                this.authError = '登录失败，请稍后重试';
+                this.refreshCaptcha();
+            } finally {
+                this.authLoading = false;
+            }
+        },
+
+        async handleRegister() {
+            /* 处理注册 */
+            this.authError = '';
+
+            if (!this.authForm.username) {
+                this.authError = '请输入用户名';
+                return;
+            }
+            if (this.authForm.username.length < 3 || this.authForm.username.length > 20) {
+                this.authError = '用户名长度必须在3-20个字符之间';
+                return;
+            }
+            if (!/^[a-zA-Z0-9]+$/.test(this.authForm.username)) {
+                this.authError = '用户名只能包含字母和数字';
+                return;
+            }
+            if (!this.authForm.password) {
+                this.authError = '请输入密码';
+                return;
+            }
+            if (this.authForm.password.length < 6) {
+                this.authError = '密码长度不能少于6个字符';
+                return;
+            }
+            if (this.authForm.password !== this.authForm.confirmPassword) {
+                this.authError = '两次输入的密码不一致';
+                return;
+            }
+            if (!this.authForm.inviteCode) {
+                this.authError = '请输入邀请码';
+                return;
+            }
+            if (!this.authForm.captcha) {
+                this.authError = '请输入验证码';
+                return;
+            }
+
+            this.authLoading = true;
+            try {
+                const response = await apiFetch('/api/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: this.authForm.username,
+                        password: this.authForm.password,
+                        confirm_password: this.authForm.confirmPassword,
+                        invite_code: this.authForm.inviteCode,
+                        captcha: this.authForm.captcha
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    this.showNotification(data.message, 'success');
+                    // 注册成功后切换到登录模式
+                    this.authMode = 'login';
+                    this.resetAuthForm();
+                    this.refreshCaptcha();
+                } else {
+                    this.authError = data.message;
+                    this.showNotification(data.message, 'error');
+                    this.refreshCaptcha();
+                }
+            } catch (error) {
+                this.authError = '注册失败，请稍后重试';
+                this.showNotification('注册失败，请稍后重试', 'error');
+                this.refreshCaptcha();
+            } finally {
+                this.authLoading = false;
+            }
+        },
+
+        async handleLogout() {
+            /* 处理登出 */
+            // 清理定时器
+            if (this.userCheckTimer) {
+                clearInterval(this.userCheckTimer);
+                this.userCheckTimer = null;
+            }
+            try {
+                await apiFetch('/api/logout', { method: 'POST' });
+                this.isLoggedIn = false;
+                this.currentUser = null;
+                this.userRole = 'user';
+                setLoggedInUsername(null);
+                this.showLoginModal = true;
+                this.showMaintenanceModal = false;
+                this.resetAuthForm();
+                this.refreshCaptcha();
+                this.step = 'load';
+                this.showNotification('已退出登录', 'info');
+                // 登出时不清除记住的密码，保留用户的勾选状态
+            } catch (error) {
+                console.error('退出登录失败:', error);
+            }
+        },
+
+        checkGuestAccess() {
+            /* 检测游客权限并显示维护弹窗 */
+            if (this.isLoggedIn && this.userRole === 'guest') {
+                this.showMaintenanceModal = true;
+            }
+        },
+
+        startUserCheck() {
+            /* 启动定时用户验证 */
+            if (this.userCheckTimer) {
+                clearInterval(this.userCheckTimer);
+            }
+            
+            // 每分钟（60000毫秒）验证一次用户状态
+            this.userCheckTimer = setInterval(async () => {
+                if (!this.isLoggedIn) {
+                    return;
+                }
+                
+                await this.verifyUserStatus();
+            }, 60000);
+        },
+
+        async verifyUserStatus() {
+            /* 验证用户状态（带30秒超时和重试机制） */
+            try {
+                // 如果已有验证请求在进行，先取消
+                if (this.userCheckAbortController) {
+                    this.userCheckAbortController.abort();
+                }
+                
+                // 创建新的AbortController
+                this.userCheckAbortController = new AbortController();
+                const signal = this.userCheckAbortController.signal;
+                
+                // 设置30秒超时
+                const timeoutId = setTimeout(() => {
+                    this.userCheckAbortController.abort();
+                }, 30000);
+                
+                const response = await apiFetch('/api/verify_user', { signal });
+                
+                // 清除超时定时器
+                clearTimeout(timeoutId);
+                this.userCheckAbortController = null;
+                
+                // 重置失败计数（成功响应）
+                this.userCheckFailedCount = 0;
+                
+                // 如果返回401，说明会话失效
+                if (response.status === 401) {
+                    this.isLoggedIn = false;
+                    this.currentUser = null;
+                    this.userRole = 'user';
+                    setLoggedInUsername(null);
+                    this.showLoginModal = true;
+                    this.showMaintenanceModal = true;
+                    this.showNotification('登录已过期，请重新登录', 'error');
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    if (!data.valid) {
+                        // 用户不合法，清除会话
+                        this.isLoggedIn = false;
+                        this.currentUser = null;
+                        this.userRole = 'user';
+                        setLoggedInUsername(null);
+                        this.showLoginModal = true;
+                        this.showMaintenanceModal = true;
+                        this.showNotification(data.message, 'error');
+                    } else if (data.role === 'guest') {
+                        // 游客身份，立即弹出提示
+                        this.userRole = 'guest';
+                        this.showGuestAlert = true;
+                        this.showNotification('当前用户为游客账号', 'warning');
+                    } else {
+                        // 用户有效且不是游客
+                        this.userRole = data.role;
+                        this.showNotification(data.message, 'success');
+                    }
+                }
+            } catch (error) {
+                // 如果是主动取消的请求（新的验证请求开始了），不处理
+                if (error.name === 'AbortError') {
+                    return;
+                }
+                
+                console.error('验证用户状态失败:', error);
+                
+                // 增加失败计数
+                this.userCheckFailedCount++;
+                
+                // 如果第一次请求超时（失败计数为1），立即重试
+                if (this.userCheckFailedCount === 1) {
+                    console.log('用户验证超时，正在重试...');
+                    // 短暂延迟后立即重试
+                    setTimeout(() => {
+                        this.verifyUserStatus();
+                    }, 1000);
+                } 
+                // 如果第二次也超时（失败计数为2），弹出错误弹窗
+                else if (this.userCheckFailedCount >= 2) {
+                    this.userCheckFailedCount = 0;
+                    this.isLoggedIn = false;
+                    this.currentUser = null;
+                    this.userRole = 'user';
+                    this.showLoginModal = true;
+                    this.showMaintenanceModal = true;
+                    this.showNotification('用户验证超时，请检查网络连接', 'error');
+                }
+            }
+        },
+
+        handleKeyboard(event) {
+            /* 处理全局键盘事件 */
+            // 只有在答题页面才响应
+            if (this.step !== 'answer') {
+                return;
+            }
+
+            // 检查焦点是否在输入框、文本域、登录弹窗输入框等交互元素中
+            const activeElement = document.activeElement;
+            if (activeElement && (
+                activeElement.tagName === 'INPUT' || 
+                activeElement.tagName === 'TEXTAREA' || 
+                activeElement.tagName === 'SELECT' ||
+                activeElement.isContentEditable ||
+                activeElement.closest('.modal') || // 在弹窗内不响应
+                activeElement.closest('.answer-sheet-content') // 在答题卡内不响应
+            )) {
+                return;
+            }
+
+            const key = event.key;
+
+            // 左右方向键切换题目
+            if (key === 'ArrowLeft') {
+                event.preventDefault();
+                if (this.canGoPrev) {
+                    this.prevQuestion();
+                }
+            } else if (key === 'ArrowRight') {
+                event.preventDefault();
+                if (this.canGoNext) {
+                    this.nextQuestion();
+                }
+            }
+            // 数字键映射到选项
+            else if (/^[1-9]$/.test(key)) {
+                event.preventDefault();
+                const optionIndex = parseInt(key) - 1; // 1->A, 2->B, 3->C...
+                this.selectOptionByKey(optionIndex);
+            }
+        },
+
+        selectOptionByKey(optionIndex) {
+            /* 通过数字键选择选项 */
+            if (!this.currentQuestion || this.isAnswerViewed || this.studyMode) {
+                return;
+            }
+
+            // 判断题：1->正确, 2->错误（如果存在对应选项）
+            if (this.currentQuestion.type === '判断题') {
+                if (optionIndex < this.currentQuestion.options.length) {
+                    this.selectOption(this.currentQuestion.options[optionIndex], optionIndex);
+                }
+                return;
+            }
+
+            // 单选题、多选题：数字映射到选项字母
+            if (['单选题', '多选题'].includes(this.currentQuestion.type)) {
+                if (optionIndex < this.currentQuestion.options.length) {
+                    const optionLetter = this.getOptionLetter(optionIndex);
+                    if (this.currentQuestion.type === '单选题') {
+                        this.selectOption(optionLetter, optionIndex);
+                    } else {
+                        // 多选题：切换选项的选中状态
+                        const answerIndex = this.userAnswer.indexOf(optionLetter);
+                        if (answerIndex === -1) {
+                            this.userAnswer.push(optionLetter);
+                        } else {
+                            this.userAnswer.splice(answerIndex, 1);
+                        }
+                        this.handleMultipleAnswerChange();
+                    }
+                }
+            }
+        },
+        
+        getQuestionImageUrl(imagePath) {
+            /* 获取题目图片的URL */
+            if (!imagePath) return '';
+            
+            // 如果已经是完整URL，直接返回
+            if (imagePath.startsWith('http://') || imagePath.startsWith('https://') || imagePath.startsWith('data:')) {
+                return imagePath;
+            }
+            
+            // 构建相对于paper_json/images目录的URL
+            // 支持相对路径和绝对路径
+            let normalizedPath = imagePath.replace(/\\/g, '/');
+            if (normalizedPath.startsWith('/')) {
+                normalizedPath = normalizedPath.substring(1);
+            }
+            
+            return `/api/question_image/${normalizedPath}`;
+        },
+        
+        handleImageError(event) {
+            /* 处理图片加载失败 */
+            console.warn('题目图片加载失败:', event.target.src);
+            // 隐藏图片容器
+            const container = event.target.closest('.question-image-container');
+            if (container) {
+                container.style.display = 'none';
+            }
+        },
+        
+        handleImageLoad(event) {
+            /* 处理图片加载成功 */
+            const container = event.target.closest('.question-image-container');
+            if (container) {
+                container.style.display = 'flex';
+            }
+        },
     }
 }).mount('#app');

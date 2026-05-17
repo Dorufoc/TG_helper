@@ -130,6 +130,11 @@ class DeepSeekWorker(QThread):
             
             # 清理可能的markdown格式
             analysis = analysis.replace('**', '').replace('`', '').strip()
+            # 转义HTML标签，防止<details>、<summary>等被解析为DOM元素
+            # 将 <tag> 和 </tag> 格式转换为 &lt;tag&gt; 和 &lt;/tag&gt;
+            import re
+            analysis = re.sub(r'<([a-zA-Z][a-zA-Z0-9-]*)>', r'&lt;\1&gt;', analysis)
+            analysis = re.sub(r'</([a-zA-Z][a-zA-Z0-9-]*)>', r'&lt;/\1&gt;', analysis)
             return analysis
             
         except requests.exceptions.RequestException as e:

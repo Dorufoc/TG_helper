@@ -1,0 +1,76 @@
+{
+  "users": [
+    {
+      "username": "admin",
+      "password": "94a19016b9262a98bebf4c7b2150d480a87873a099c5b57f30bc775479d668c7",
+      "role": "admin",
+      "status": "active",
+      "invitation_code": "ADMIN001",
+      "created_at": "2024-01-01 00:00:00"
+    },
+    {
+      "username": "user",
+      "password": "04f8996da763b7a969b1028ee3007569eaf3a635486ddab211d512c85b9df8fb",
+      "role": "user",
+      "status": "active",
+      "invitation_code": "B6F9C3SD",
+      "created_at": "2024-01-01 00:00:00"
+    },
+    {
+      "username": "renmoren",
+      "password": "481f6cc0511143ccdd7e2d1b1b94faf0a700a8b49cd13922a70b5ae28acaa8c5",
+      "role": "admin",
+      "status": "active",
+      "invitation_code": "JG60X2PB",
+      "created_at": "2026-05-13 23:43:45"
+    },
+    {
+      "username": "aelysir",
+      "password": "384fde3636e6e01e0194d2976d8f26410af3e846e573379cb1a09e2f0752d8cc",
+      "role": "admin",
+      "status": "active",
+      "invitation_code": "0Q4UYP57",
+      "created_at": "2026-05-13 23:43:45"
+    },
+    {
+      "username": "szp",
+      "password": "83e7be4417335469795cc13d3af3eef9ce63c3f62595492863668e474d449ec2",
+      "role": "user",
+      "status": "active",
+      "invitation_code": "718UMB3H",
+      "created_at": "2026-05-13 23:43:45"
+    },
+    {
+      "username": "lyx",
+      "password": "e0bc60c82713f64ef8a57c0c40d02ce24fd0141d5cc3086259c19b1e62a62bea",
+      "role": "user",
+      "status": "active",
+      "invitation_code": "770P9W0N",
+      "created_at": "2026-05-13 23:43:45"
+    },
+    {
+      "username": "pineapple",
+      "password": "f291591531d4c16a39919a837948739dc6a388830d714c3de427a2400dc2e9cf",
+      "role": "user",
+      "status": "active",
+      "invitation_code": "ZN9F3UNF",
+      "created_at": "2026-05-13 23:43:45"
+    },
+    {
+      "username": "sw",
+      "password": "94edf28c6d6da38fd35d7ad53e485307f89fbeaf120485c8d17a43f323deee71",
+      "role": "user",
+      "status": "active",
+      "invitation_code": "K18SLPYE",
+      "created_at": "2026-05-13 23:43:45"
+    },
+    {
+      "username": "游客",
+      "password": "84983c60f7daadc1cb8698621f802c0d9f9a3c3c295c810748fb048115c186ec",
+      "role": "user",
+      "status": "active",
+      "invitation_code": "GUEST001",
+      "created_at": "2026-05-13 00:00:00"
+    }
+  ]
+}

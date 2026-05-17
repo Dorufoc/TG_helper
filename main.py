@@ -3,89 +3,166 @@
 
 import sys
 import os
-from PyQt5.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout,
-    QLabel, QPushButton, QMessageBox
-)
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont
+import tkinter as tk
+from tkinter import messagebox
+import subprocess
+import threading
 
-# 导入BrowserWindow类
-from browser_source_saver import BrowserWindow
+# 功能模块延迟加载标记
+DEEPSEEK_AVAILABLE = False
+DeepSeekParserWindow = None
 
+# 尝试导入DeepSeek解析器
 try:
-    from deepseek_parser import DeepSeekParserWindow
+    from deepseek_parser import DeepSeekParserWindow as DSPW
+    DeepSeekParserWindow = DSPW
     DEEPSEEK_AVAILABLE = True
 except ImportError:
-    DEEPSEEK_AVAILABLE = False
     print("注意: deepseek_parser 模块不可用，DeepSeek解析功能将被禁用")
 
 
-class MainWindow(QWidget):
-    """主窗口：题库管理、浏览器捕捉、DeepSeek解析"""
+def launch_browser_saver_in_subprocess():
+    """在新的进程中启动浏览器源代码保存器"""
+    script = """
+import sys
+from PyQt5.QtWidgets import QApplication
+from PyQt5.QtGui import QFont
+from browser_source_saver import BrowserWindow
+
+app = QApplication(sys.argv)
+app.setFont(QFont("Microsoft YaHei UI"))
+window = BrowserWindow()
+window.show()
+sys.exit(app.exec_())
+"""
+    subprocess.Popen([sys.executable, "-c", script], cwd=os.getcwd())
+
+
+def launch_deepseek_parser_in_subprocess():
+    """在新的进程中启动DeepSeek解析窗口"""
+    script = """
+import sys
+from PyQt5.QtWidgets import QApplication
+from PyQt5.QtGui import QFont
+from deepseek_parser import DeepSeekParserWindow
+
+app = QApplication(sys.argv)
+app.setFont(QFont("Microsoft YaHei UI"))
+window = DeepSeekParserWindow()
+window.show()
+sys.exit(app.exec_())
+"""
+    subprocess.Popen([sys.executable, "-c", script], cwd=os.getcwd())
+
+
+class MainWindow:
+    """主窗口：题库管理工具（使用tkinter实现）"""
     
     def __init__(self):
-        super().__init__()
-        self.setWindowTitle("题库管理工具")
-        self.setGeometry(100, 100, 600, 400)
+        self.root = tk.Tk()
+        self.root.title("题库管理工具")
+        self.root.geometry("400x300")
+        self.root.resizable(False, False)
+        
+        # 设置窗口图标（如果有的话）
+        try:
+            self.root.iconbitmap("icon.ico")
+        except:
+            pass
+        
         self.init_ui()
     
     def init_ui(self):
         """初始化界面"""
-        self.main_layout = QVBoxLayout()
-        
         # 标题
-        title_label = QLabel("题库管理工具")
-        title_label.setFont(QFont("Microsoft YaHei UI, Arial", 18, QFont.Bold))
-        title_label.setAlignment(Qt.AlignCenter)
-        self.main_layout.addWidget(title_label)
+        title_label = tk.Label(
+            self.root,
+            text="题库管理工具",
+            font=("Microsoft YaHei UI", 18, "bold"),
+            fg="#333333"
+        )
+        title_label.pack(pady=(40, 30))
         
-        # 功能按钮区域
-        button_layout = QVBoxLayout()
-        button_layout.setSpacing(15)
+        # 按钮容器
+        button_frame = tk.Frame(self.root)
+        button_frame.pack(pady=10)
         
         # 手动导入题库按钮
-        self.import_button = QPushButton("手动导入题库（浏览器捕捉）")
-        self.import_button.setFont(QFont("Microsoft YaHei UI, Arial", 12))
-        self.import_button.clicked.connect(self.open_browser_saver)
-        button_layout.addWidget(self.import_button)
+        self.import_button = tk.Button(
+            button_frame,
+            text="手动导入题库（浏览器捕捉）",
+            font=("Microsoft YaHei UI", 11),
+            width=28,
+            height=2,
+            bg="#2196F3",
+            fg="white",
+            relief="flat",
+            cursor="hand2",
+            activebackground="#1976D2",
+            activeforeground="white",
+            command=self.on_browser_saver_click
+        )
+        self.import_button.pack(pady=8)
         
         # DeepSeek解析按钮
-        self.deepseek_button = QPushButton("DeepSeek解析题库")
-        self.deepseek_button.setFont(QFont("Microsoft YaHei UI, Arial", 12))
         if DEEPSEEK_AVAILABLE:
-            self.deepseek_button.clicked.connect(self.open_deepseek_parser)
+            self.deepseek_button = tk.Button(
+                button_frame,
+                text="DeepSeek解析题库",
+                font=("Microsoft YaHei UI", 11),
+                width=28,
+                height=2,
+                bg="#4CAF50",
+                fg="white",
+                relief="flat",
+                cursor="hand2",
+                activebackground="#388E3C",
+                activeforeground="white",
+                command=self.on_deepseek_parser_click
+            )
         else:
-            self.deepseek_button.setEnabled(False)
-            self.deepseek_button.setToolTip("DeepSeek解析模块不可用")
-        button_layout.addWidget(self.deepseek_button)
-        
-        self.main_layout.addLayout(button_layout)
-        self.main_layout.addStretch()
-        
-        # 设置布局
-        self.setLayout(self.main_layout)
+            self.deepseek_button = tk.Button(
+                button_frame,
+                text="DeepSeek解析题库（不可用）",
+                font=("Microsoft YaHei UI", 11),
+                width=28,
+                height=2,
+                bg="#BDBDBD",
+                fg="#757575",
+                relief="flat",
+                state="disabled",
+                cursor="arrow"
+            )
+        self.deepseek_button.pack(pady=8)
     
-    def open_browser_saver(self):
-        """打开浏览器源代码保存器"""
-        self.browser_window = BrowserWindow()
-        self.browser_window.show()
+    def on_browser_saver_click(self):
+        """点击浏览器捕捉按钮"""
+        try:
+            launch_browser_saver_in_subprocess()
+        except Exception as e:
+            messagebox.showerror("启动失败", f"无法启动浏览器模块：{str(e)}")
     
-    def open_deepseek_parser(self):
-        """打开DeepSeek解析窗口"""
-        if DEEPSEEK_AVAILABLE:
-            self.deepseek_window = DeepSeekParserWindow()
-            self.deepseek_window.show()
-        else:
-            QMessageBox.warning(self, "功能不可用", "DeepSeek解析模块不可用，请确保deepseek_parser.py文件存在")
+    def on_deepseek_parser_click(self):
+        """点击DeepSeek解析按钮"""
+        if not DEEPSEEK_AVAILABLE:
+            messagebox.showwarning("功能不可用", "DeepSeek解析模块不可用")
+            return
+        
+        try:
+            launch_deepseek_parser_in_subprocess()
+        except Exception as e:
+            messagebox.showerror("启动失败", f"无法启动DeepSeek解析模块：{str(e)}")
+    
+    def run(self):
+        """运行主循环"""
+        self.root.mainloop()
 
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    # 设置全局默认字体为Microsoft YaHei UI，添加后备方案
-    default_font = QFont()
-    default_font.setFamily("Microsoft YaHei UI, Arial, Helvetica, sans-serif")
-    app.setFont(default_font)
+    # Windows平台DPI优化
+    if sys.platform == 'win32':
+        import ctypes
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    
     main_window = MainWindow()
-    main_window.show()
-    sys.exit(app.exec_())
+    main_window.run()
