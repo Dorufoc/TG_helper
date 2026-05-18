@@ -1250,8 +1250,26 @@ def upload_question_bank():
             return jsonify({'success': False, 'message': '同名题库已存在，请先删除或重命名'}), 409
         
         content = file.read()
+        
+        # 尝试多种编码解码文件内容
+        text_content = None
+        encodings = ['utf-8', 'gbk', 'gb2312', 'gb18030', 'latin-1']
+        decode_error = None
+        
+        for encoding in encodings:
+            try:
+                text_content = content.decode(encoding)
+                break
+            except UnicodeDecodeError as e:
+                decode_error = e
+                continue
+        
+        if text_content is None:
+            logger.error(f'题库上传失败: 文件编码不支持 - {decode_error}')
+            return jsonify({'success': False, 'message': f'文件编码不支持，请使用UTF-8或GBK编码保存文件'}), 400
+        
         try:
-            questions = json.loads(content.decode('utf-8'))
+            questions = json.loads(text_content)
         except json.JSONDecodeError:
             return jsonify({'success': False, 'message': '文件格式错误，不是有效的JSON'}), 400
         
@@ -2001,6 +2019,318 @@ def index():
 def handle_404(e):
     """处理所有404请求，重定向到空白页"""
     return send_from_directory(app.static_folder, 'blank.html'), 404
+
+FTP_ROOT_DIR = os.path.join(BASE_DIR, 'ftp')
+if not os.path.exists(FTP_ROOT_DIR):
+    os.makedirs(FTP_ROOT_DIR)
+    logger.info(f'创建FTP目录: {FTP_ROOT_DIR}')
+
+ALLOWED_FTP_EXTENSIONS = {
+    'image': {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg', '.ico'},
+    'video': {'.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm'},
+    'audio': {'.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a', '.wma'},
+    'document': {'.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.md', '.rtf'},
+    'code': {'.py', '.js', '.html', '.css', '.json', '.xml', '.java', '.cpp', '.c', '.h', '.hpp', '.cs', '.go', '.rs', '.php', '.rb', '.swift', '.kt', '.sh', '.bat', '.ps1', '.sql'},
+    'archive': {'.zip', '.rar', '.7z', '.tar', '.gz', '.bz2'},
+}
+
+EXCLUDED_DIRS = {'.git', '__pycache__', 'node_modules', '.venv', 'venv', 'env', '.vscode', '.idea'}
+
+def get_file_category(filename):
+    """根据文件扩展名判断文件类别"""
+    _, ext = os.path.splitext(filename)
+    ext = ext.lower()
+    for category, extensions in ALLOWED_FTP_EXTENSIONS.items():
+        if ext in extensions:
+            return category
+    return 'other'
+
+def format_file_size(size_bytes):
+    """格式化文件大小"""
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.2f} KB"
+    elif size_bytes < 1024 * 1024 * 1024:
+        return f"{size_bytes / (1024 * 1024):.2f} MB"
+    else:
+        return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
+
+def safe_join(*paths):
+    """安全地拼接路径，确保不超出FTP_ROOT_DIR"""
+    full_path = os.path.abspath(os.path.join(*paths))
+    root_path = os.path.abspath(FTP_ROOT_DIR)
+    if not full_path.startswith(root_path):
+        return None
+    return full_path
+
+@app.route('/ftp')
+def serve_ftp_page():
+    """提供FTP文件浏览页面"""
+    return send_from_directory(os.path.join(BASE_DIR, 'web'), 'ftp.html')
+
+@app.route('/ftp/list', methods=['GET'])
+def ftp_list_directory():
+    """列出FTP目录内容"""
+    try:
+        subdir = request.args.get('path', '').strip()
+        if subdir:
+            target_dir = safe_join(FTP_ROOT_DIR, subdir)
+        else:
+            target_dir = FTP_ROOT_DIR
+        
+        if not target_dir or not os.path.exists(target_dir):
+            return jsonify({'success': False, 'message': '目录不存在'}), 404
+        
+        if not os.path.isdir(target_dir):
+            return jsonify({'success': False, 'message': '路径不是目录'}), 400
+        
+        items = []
+        try:
+            entries = os.listdir(target_dir)
+        except PermissionError:
+            return jsonify({'success': False, 'message': '没有权限访问该目录'}), 403
+        
+        for entry in entries:
+            if entry.startswith('.') or entry in EXCLUDED_DIRS:
+                continue
+            
+            try:
+                entry_path = os.path.join(target_dir, entry)
+                rel_path = os.path.relpath(entry_path, FTP_ROOT_DIR)
+                
+                if os.path.isdir(entry_path):
+                    items.append({
+                        'name': entry,
+                        'type': 'directory',
+                        'path': rel_path.replace('\\', '/'),
+                        'size': '-',
+                        'category': 'folder',
+                        'modified': datetime.datetime.fromtimestamp(
+                            os.path.getmtime(entry_path)
+                        ).strftime('%Y-%m-%d %H:%M:%S')
+                    })
+                else:
+                    file_size = os.path.getsize(entry_path)
+                    items.append({
+                        'name': entry,
+                        'type': 'file',
+                        'path': rel_path.replace('\\', '/'),
+                        'size': format_file_size(file_size),
+                        'size_bytes': file_size,
+                        'category': get_file_category(entry),
+                        'extension': os.path.splitext(entry)[1].lower(),
+                        'modified': datetime.datetime.fromtimestamp(
+                            os.path.getmtime(entry_path)
+                        ).strftime('%Y-%m-%d %H:%M:%S')
+                    })
+            except (OSError, PermissionError) as e:
+                logger.warning(f'无法访问 {entry}: {e}')
+                continue
+        
+        items.sort(key=lambda x: (x['type'] != 'directory', x['name'].lower()))
+        
+        parent_path = ''
+        if subdir:
+            parent_parts = subdir.rstrip('/').split('/')
+            if len(parent_parts) > 1:
+                parent_path = '/'.join(parent_parts[:-1])
+            elif len(parent_parts) == 1:
+                parent_path = ''
+        
+        return jsonify({
+            'success': True,
+            'current_path': subdir,
+            'parent_path': parent_path,
+            'items': items,
+            'total_items': len(items)
+        })
+        
+    except Exception as e:
+        logger.error(f'获取FTP目录列表失败: {e}')
+        return jsonify({'success': False, 'message': f'获取目录列表失败: {str(e)}'}), 500
+
+@app.route('/ftp/download/<path:filename>', methods=['GET'])
+def ftp_download_file(filename):
+    """下载FTP文件"""
+    try:
+        safe_path = safe_join(FTP_ROOT_DIR, filename)
+        if not safe_path:
+            return jsonify({'success': False, 'message': '非法文件路径'}), 403
+        
+        if not os.path.exists(safe_path):
+            return jsonify({'success': False, 'message': '文件不存在'}), 404
+        
+        if not os.path.isfile(safe_path):
+            return jsonify({'success': False, 'message': '路径不是文件'}), 400
+        
+        directory = os.path.dirname(safe_path)
+        basename = os.path.basename(safe_path)
+        
+        return send_from_directory(
+            directory,
+            basename,
+            as_attachment=True,
+            download_name=basename
+        )
+        
+    except Exception as e:
+        logger.error(f'下载文件失败: {e}')
+        return jsonify({'success': False, 'message': f'下载失败: {str(e)}'}), 500
+
+@app.route('/ftp/preview/<path:filename>', methods=['GET'])
+def ftp_preview_file(filename):
+    """预览FTP文件"""
+    try:
+        safe_path = safe_join(FTP_ROOT_DIR, filename)
+        if not safe_path:
+            return jsonify({'success': False, 'message': '非法文件路径'}), 403
+        
+        if not os.path.exists(safe_path):
+            return jsonify({'success': False, 'message': '文件不存在'}), 404
+        
+        if not os.path.isfile(safe_path):
+            return jsonify({'success': False, 'message': '路径不是文件'}), 400
+        
+        category = get_file_category(filename)
+        ext = os.path.splitext(filename)[1].lower()
+        
+        if category == 'image' or ext in ALLOWED_FTP_EXTENSIONS['image']:
+            directory = os.path.dirname(safe_path)
+            basename = os.path.basename(safe_path)
+            return send_from_directory(directory, basename)
+        
+        elif category == 'text' or ext == '.txt':
+            try:
+                with open(safe_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read(100 * 1024)
+                return jsonify({
+                    'success': True,
+                    'type': 'text',
+                    'content': content,
+                    'filename': filename
+                })
+            except Exception as e:
+                return jsonify({
+                    'success': True,
+                    'type': 'binary',
+                    'message': '文件为二进制格式，无法预览',
+                    'filename': filename
+                })
+        
+        elif category == 'code' or ext in ALLOWED_FTP_EXTENSIONS['code']:
+            try:
+                with open(safe_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read(100 * 1024)
+                return jsonify({
+                    'success': True,
+                    'type': 'code',
+                    'content': content,
+                    'filename': filename,
+                    'language': ext[1:] if ext else 'text'
+                })
+            except Exception as e:
+                return jsonify({
+                    'success': True,
+                    'type': 'binary',
+                    'message': '文件读取失败',
+                    'filename': filename
+                })
+        
+        elif ext == '.pdf':
+            directory = os.path.dirname(safe_path)
+            basename = os.path.basename(safe_path)
+            return send_from_directory(directory, basename)
+        
+        else:
+            file_size = os.path.getsize(safe_path)
+            return jsonify({
+                'success': True,
+                'type': 'unsupported',
+                'message': f'此文件类型暂不支持预览 ({ext})',
+                'filename': filename,
+                'size': format_file_size(file_size),
+                'size_bytes': file_size,
+                'category': category
+            })
+        
+    except Exception as e:
+        logger.error(f'预览文件失败: {e}')
+        return jsonify({'success': False, 'message': f'预览失败: {str(e)}'}), 500
+
+@app.route('/ftp/info', methods=['GET'])
+def ftp_get_info():
+    """获取FTP根目录信息"""
+    try:
+        total_size = 0
+        file_count = 0
+        dir_count = 0
+        
+        for root, dirs, files in os.walk(FTP_ROOT_DIR):
+            dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS and not d.startswith('.')]
+            for file in files:
+                if not file.startswith('.'):
+                    try:
+                        file_path = os.path.join(root, file)
+                        total_size += os.path.getsize(file_path)
+                        file_count += 1
+                    except:
+                        continue
+            dir_count += len(dirs)
+        
+        return jsonify({
+            'success': True,
+            'root_path': FTP_ROOT_DIR,
+            'total_files': file_count,
+            'total_directories': dir_count,
+            'total_size': format_file_size(total_size),
+            'total_size_bytes': total_size
+        })
+        
+    except Exception as e:
+        logger.error(f'获取FTP信息失败: {e}')
+        return jsonify({'success': False, 'message': f'获取信息失败: {str(e)}'}), 500
+
+@app.route('/ftp/search', methods=['GET'])
+def ftp_search_files():
+    """搜索FTP目录中的文件"""
+    try:
+        query = request.args.get('q', '').strip()
+        if not query:
+            return jsonify({'success': False, 'message': '搜索关键词不能为空'}), 400
+        
+        results = []
+        query_lower = query.lower()
+        
+        for root, dirs, files in os.walk(FTP_ROOT_DIR):
+            dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS and not d.startswith('.')]
+            
+            for file in files:
+                if file.lower().find(query_lower) != -1:
+                    try:
+                        file_path = os.path.join(root, file)
+                        rel_path = os.path.relpath(file_path, FTP_ROOT_DIR)
+                        results.append({
+                            'name': file,
+                            'path': rel_path.replace('\\', '/'),
+                            'size': format_file_size(os.path.getsize(file_path)),
+                            'category': get_file_category(file),
+                            'extension': os.path.splitext(file)[1].lower()
+                        })
+                    except:
+                        continue
+        
+        results.sort(key=lambda x: x['name'].lower())
+        return jsonify({
+            'success': True,
+            'query': query,
+            'results': results,
+            'total': len(results)
+        })
+        
+    except Exception as e:
+        logger.error(f'搜索文件失败: {e}')
+        return jsonify({'success': False, 'message': f'搜索失败: {str(e)}'}), 500
 
 if __name__ == '__main__':
     # 确保web目录存在

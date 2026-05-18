@@ -50,6 +50,7 @@ createApp({
             isAdmin: false,
             isDarkMode: false,
             activeTab: 'users',
+            drawerOpen: false,
             loginForm: {
                 username: '',
                 password: '',
@@ -163,6 +164,28 @@ createApp({
         }
     },
     methods: {
+        switchTab(tab) {
+            this.activeTab = tab;
+            this.drawerOpen = false;
+        },
+        getTabTitle() {
+            const titles = {
+                users: '用户管理',
+                deepseek: 'DeepSeek解析',
+                question_bank: '题库管理',
+                settings: '系统设置'
+            };
+            return titles[this.activeTab] || '管理后台';
+        },
+        getTabSubtitle() {
+            const subtitles = {
+                users: '管理系统用户、角色和权限',
+                deepseek: '使用 AI 为题库生成详细解析',
+                question_bank: '上传、管理和维护题库文件',
+                settings: '配置账号系统和 AI 服务商参数'
+            };
+            return subtitles[this.activeTab] || '';
+        },
         toggleDarkMode() {
             this.isDarkMode = !this.isDarkMode;
             if (this.isDarkMode) {
