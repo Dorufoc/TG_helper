@@ -702,7 +702,7 @@ input[type="checkbox"]:disabled {
 }
 
 .btn-danger:hover:not(:disabled) {
-    background-color: var(--md-ref-palette-error95);
+    background-color: color-mix(in srgb, var(--md-sys-color-error) 12%, var(--md-sys-color-error-container));
 }
 
 /* --- Success Button --- */
@@ -712,7 +712,7 @@ input[type="checkbox"]:disabled {
 }
 
 .btn-success:hover:not(:disabled) {
-    background-color: var(--md-ref-palette-success95);
+    background-color: color-mix(in srgb, var(--md-sys-color-success) 12%, var(--md-sys-color-success-container));
 }
 
 /* Legacy alias: btn-info -> outlined */

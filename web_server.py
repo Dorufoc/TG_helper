@@ -12,11 +12,15 @@ import secrets
 import threading
 import gc
 import logging.handlers
+from typing import Optional
 from functools import wraps
 from flask import Flask, request, jsonify, send_from_directory, session, Response
 from flask_cors import CORS
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
-from api_encryptor import decrypt_api_key, generate_encryption_key, get_secret_key, delete_secret_key, is_key_token_valid
+from api_encryptor import (
+    decrypt_api_key, generate_encryption_key, get_secret_key, delete_secret_key, is_key_token_valid,
+    get_current_key_pair, rotate_key_pair, encrypt_api_key, load_key_pair, save_key_pair
+)
 
 # 配置日志系统
 log_dir = 'logs'
@@ -88,6 +92,54 @@ USERS_FILE = os.path.join(BASE_DIR, 'users.json')
 # 系统配置文件路径
 SETTINGS_FILE = os.path.join(BASE_DIR, 'settings.json')
 
+# AI提供商常量
+AI_PROVIDER_NAMES = ('openai', 'anthropic', 'deepseek')
+QUESTION_ANALYSIS_AGENT_KEY = 'question_analysis'
+
+# 默认题目解析Agent提示词
+DEFAULT_QUESTION_ANALYSIS_PROMPT = """# Role
+你是一个顶级全科教育专家与智能助教 Agent。你的核心任务是针对各类题目（选择、填空、主观、代码、计算推理等），生成极简、专业、易懂的答案解析。
+
+# Evaluation Criteria
+1. 极致精炼：剔除所有大话、空话和过度修饰，单句尽量不超过 15 字，直奔主题。
+2. 语言通俗：用最简单的日常语言解释复杂概念，降低读者的认知负荷。
+3. 规范专业：术语使用必须严谨、标准，格式必须统一。
+
+# Workflow By Task Types
+
+## 1. 单项/多项选择题
+- 【核心答案】直接给出正确选项（例：**正确答案：A** 或 **正确答案：A、C**）。
+- 【选项剖析】逐一拆解所有选项。先说该选项对/错在哪里，再指出其背后的核心考点。
+  - 格式：
+    - A. [正确/错误] + [精炼原因]（考点：xxx）
+    - B. [正确/错误] + [精炼原因]（考点：xxx）
+
+## 2. 代码/编程题
+- 【标准源码】提供排版整洁、自带核心注释的正确代码块。
+- 【逐行解析】严禁概括。必须对代码进行逐行（或紧密代码块）说明。
+  - 格式：
+    - `第 X 行`：该行代码的具体功能与变量变化。
+- 【算法核心】用一句话总结该算法的时间复杂度和空间复杂度。
+
+## 3. 逻辑推理与计算题
+- 【最终结果】开门见山给出最终数值或推论结论。
+- 【步步为营】将解题过程拆解为不可分割的微小步骤。
+  - 格式：
+    - 步骤 1：[已知条件转化/第一步计算]
+    - 步骤 2：[公式带入/核心推理]
+    - 步骤 3：[最终推导]
+
+## 4. 普通主观题/其他题型
+- 【参考答案】给出标准、规范的得分点文本。
+- 【核心考点】一句话指出本题考察的知识模块。
+- 【答题思路】用 2-3 个核心要点（Bullet Points）阐述如何从题目联想到答案。
+
+# Output Constraints
+- 严禁任何自我介绍、寒暄或总结性套话。
+- 必须严格使用 Markdown 标题、加粗和列表进行视觉锚定。
+- 遇到公式必须使用 LaTeX 格式。
+- 每一个分析步骤或选项解析，务必做到"一句话讲透"。"""
+
 # 默认配置
 DEFAULT_SETTINGS = {
     "account": {
@@ -113,10 +165,299 @@ DEFAULT_SETTINGS = {
             "api_key": "",
             "model_id": "deepseek-v4-pro",
             "thinking": "enabled",
-            "reasoning_effort": "high"
+            "reasoning_effort": "high",
+            "max_tokens": 4096
+        }
+    },
+    "ai_agents": {
+        QUESTION_ANALYSIS_AGENT_KEY: {
+            "name": "题目解析 Agent",
+            "provider": "deepseek",
+            "model_id": "",
+            "temperature": 0.7,
+            "max_tokens": 500,
+            "system_prompt": DEFAULT_QUESTION_ANALYSIS_PROMPT
         }
     }
 }
+
+
+def decrypt_api_key_for_reencryption(encrypted_data: str, old_private_key_pem: str) -> Optional[str]:
+    """使用旧私钥解密（用于转码场景）"""
+    return decrypt_api_key(encrypted_data, use_private_key=old_private_key_pem)
+
+
+def reencrypt_api_key(plaintext: str, new_public_key_pem: str) -> Optional[str]:
+    """使用新公钥重新加密（用于转码场景）"""
+    return encrypt_api_key(plaintext, use_public_key=new_public_key_pem)
+
+
+def reencrypt_settings_keys(settings: dict, old_private_key: str, new_public_key: str) -> dict:
+    """
+    对settings中所有加密的API密钥进行转码
+    
+    Args:
+        settings: 系统配置字典
+        old_private_key: 旧私钥PEM
+        new_public_key: 新公钥PEM
+    
+    Returns:
+        转码后的settings字典
+    """
+    import copy
+    new_settings = copy.deepcopy(settings)
+    
+    ai_providers = new_settings.get('ai_providers', {})
+    for provider in AI_PROVIDER_NAMES:
+        provider_data = ai_providers.get(provider, {})
+        encrypted_key = provider_data.get('api_key', '')
+        
+        # 如果api_key存在且非空，则进行转码
+        if encrypted_key and encrypted_key.strip():
+            # 用旧私钥解密
+            decrypted_key = decrypt_api_key_for_reencryption(encrypted_key, old_private_key)
+            if decrypted_key:
+                # 用新公钥重新加密
+                reencrypted_key = reencrypt_api_key(decrypted_key, new_public_key)
+                if reencrypted_key:
+                    ai_providers[provider]['api_key'] = reencrypted_key
+                    logger.info(f"API密钥转码成功: provider={provider}")
+                else:
+                    logger.warning(f"API密钥转码失败（重新加密失败）: provider={provider}")
+            else:
+                logger.warning(f"API密钥转码失败（解密失败）: provider={provider}")
+    
+    new_settings['ai_providers'] = ai_providers
+    return new_settings
+
+
+def rotate_encryption_keys(reencrypt_existing: bool = True) -> dict:
+    """
+    轮换加密密钥对
+    
+    Args:
+        reencrypt_existing: 是否重新加密现有的API密钥
+    
+    Returns:
+        包含操作结果的字典
+    """
+    # 加载旧密钥对
+    old_key_pair = load_key_pair()
+    if not old_key_pair or not old_key_pair.get('private_key'):
+        return {
+            'success': False,
+            'message': '当前无可用密钥对，无法轮换'
+        }
+    
+    old_private_key = old_key_pair['private_key']
+    old_key_id = old_key_pair.get('key_id', 'unknown')
+    
+    # 生成并保存新密钥对
+    new_key_pair = rotate_key_pair()
+    new_public_key = new_key_pair['public_key']
+    new_key_id = new_key_pair.get('key_id', 'unknown')
+    
+    reencrypted_count = 0
+    if reencrypt_existing:
+        # 加载现有settings
+        settings = load_settings()
+        
+        # 对现有加密密钥进行转码
+        new_settings = reencrypt_settings_keys(settings, old_private_key, new_public_key)
+        
+        # 保存转码后的settings
+        if save_settings(new_settings):
+            # 统计转码的密钥数量
+            for provider in AI_PROVIDER_NAMES:
+                key = new_settings.get('ai_providers', {}).get(provider, {}).get('api_key', '')
+                if key and key.strip():
+                    reencrypted_count += 1
+        else:
+            logger.error("转码后保存settings失败")
+    
+    logger.info(
+        f"密钥对轮换完成: 旧key_id={old_key_id}, 新key_id={new_key_id}, "
+        f"转码密钥数={reencrypted_count}"
+    )
+    
+    return {
+        'success': True,
+        'message': '密钥对轮换成功',
+        'old_key_id': old_key_id,
+        'new_key_id': new_key_id,
+        'reencrypted_count': reencrypted_count
+    }
+
+
+def merge_settings(defaults, current):
+    """递归合并设置，保留已有值并补全默认值"""
+    if not isinstance(defaults, dict):
+        return current if current is not None else defaults
+
+    merged = {}
+    current = current if isinstance(current, dict) else {}
+    for key, default_value in defaults.items():
+        current_value = current.get(key)
+        if isinstance(default_value, dict):
+            merged[key] = merge_settings(default_value, current_value)
+        else:
+            merged[key] = current_value if current_value is not None else default_value
+
+    for key, value in current.items():
+        if key not in merged:
+            merged[key] = value
+    return merged
+
+
+def normalize_settings(settings):
+    """规范化系统配置结构"""
+    normalized = merge_settings(DEFAULT_SETTINGS, settings or {})
+
+    account = normalized.get('account', {})
+    try:
+        timeout = int(account.get('auth_timeout_minutes', 1))
+    except (TypeError, ValueError):
+        timeout = 1
+    account['auth_timeout_minutes'] = max(1, timeout)
+    if account.get('default_role') not in ('guest', 'user'):
+        account['default_role'] = 'guest'
+    normalized['account'] = account
+
+    ai_providers = normalized.get('ai_providers', {})
+    for provider in AI_PROVIDER_NAMES:
+        provider_settings = ai_providers.get(provider, {})
+        if provider == 'deepseek':
+            if provider_settings.get('api_format') not in ('openai', 'anthropic'):
+                provider_settings['api_format'] = 'openai'
+            if provider_settings.get('thinking') not in ('enabled', 'disabled'):
+                provider_settings['thinking'] = 'enabled'
+            if provider_settings.get('reasoning_effort') not in ('low', 'medium', 'high'):
+                provider_settings['reasoning_effort'] = 'high'
+        if provider != 'deepseek' or provider_settings.get('max_tokens') is not None:
+            try:
+                provider_settings['max_tokens'] = max(1, int(provider_settings.get('max_tokens', 4096)))
+            except (TypeError, ValueError):
+                provider_settings['max_tokens'] = 4096
+        ai_providers[provider] = provider_settings
+    normalized['ai_providers'] = ai_providers
+
+    ai_agents = normalized.get('ai_agents', {})
+    analysis_agent = ai_agents.get(QUESTION_ANALYSIS_AGENT_KEY, {})
+    if analysis_agent.get('provider') not in AI_PROVIDER_NAMES:
+        analysis_agent['provider'] = 'deepseek'
+    try:
+        analysis_agent['temperature'] = float(analysis_agent.get('temperature', 0.7))
+    except (TypeError, ValueError):
+        analysis_agent['temperature'] = 0.7
+    analysis_agent['temperature'] = min(max(analysis_agent['temperature'], 0), 2)
+    try:
+        analysis_agent['max_tokens'] = max(1, int(analysis_agent.get('max_tokens', 500)))
+    except (TypeError, ValueError):
+        analysis_agent['max_tokens'] = 500
+    if not str(analysis_agent.get('system_prompt', '')).strip():
+        analysis_agent['system_prompt'] = DEFAULT_QUESTION_ANALYSIS_PROMPT
+    ai_agents[QUESTION_ANALYSIS_AGENT_KEY] = analysis_agent
+    normalized['ai_agents'] = ai_agents
+
+    return normalized
+
+
+def get_public_settings(settings):
+    """返回可安全下发到前端的系统配置"""
+    public_settings = deep_copy_json_compatible(normalize_settings(settings))
+    for provider_name in AI_PROVIDER_NAMES:
+        if provider_name in public_settings.get('ai_providers', {}):
+            public_settings['ai_providers'][provider_name]['api_key'] = ''
+    return public_settings
+
+
+def build_openai_chat_url(base_url):
+    """构建OpenAI兼容接口URL"""
+    base = (base_url or 'https://api.openai.com').rstrip('/')
+    lower_base = base.lower()
+    if lower_base.endswith('/chat/completions'):
+        return base
+    if lower_base.endswith('/v1'):
+        return f'{base}/chat/completions'
+    return f'{base}/v1/chat/completions'
+
+
+def build_anthropic_messages_url(base_url):
+    """构建Anthropic消息接口URL"""
+    base = (base_url or 'https://api.anthropic.com').rstrip('/')
+    lower_base = base.lower()
+    if lower_base.endswith('/messages'):
+        return base
+    if lower_base.endswith('/v1'):
+        return f'{base}/messages'
+    return f'{base}/v1/messages'
+
+
+def invoke_ai_completion(provider_name, provider_settings, agent_settings, api_key, system_prompt, user_message):
+    """按提供商配置调用AI补全接口"""
+    import requests
+
+    model_id = str(agent_settings.get('model_id') or provider_settings.get('model_id') or '').strip()
+    if not model_id:
+        raise ValueError('未配置模型ID')
+
+    temperature = agent_settings.get('temperature', 0.7)
+    max_tokens = agent_settings.get('max_tokens') or provider_settings.get('max_tokens') or 500
+
+    if provider_name == 'anthropic' or (
+        provider_name == 'deepseek' and provider_settings.get('api_format') == 'anthropic'
+    ):
+        url = build_anthropic_messages_url(provider_settings.get('base_url'))
+        headers = {
+            'x-api-key': api_key,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json'
+        }
+        payload = {
+            'model': model_id,
+            'system': system_prompt,
+            'messages': [{'role': 'user', 'content': user_message}],
+            'temperature': temperature,
+            'max_tokens': max_tokens
+        }
+        response = requests.post(url, headers=headers, json=payload, timeout=60)
+        response.raise_for_status()
+        result = response.json()
+        content_blocks = result.get('content', [])
+        text_parts = [
+            block.get('text', '')
+            for block in content_blocks
+            if isinstance(block, dict) and block.get('type') == 'text'
+        ]
+        return '\n'.join(part for part in text_parts if part).strip()
+
+    url = build_openai_chat_url(provider_settings.get('base_url'))
+    headers = {
+        'Authorization': f'Bearer {api_key}',
+        'Content-Type': 'application/json'
+    }
+    payload = {
+        'model': model_id,
+        'messages': [
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'user', 'content': user_message}
+        ],
+        'temperature': temperature,
+        'max_tokens': max_tokens
+    }
+    if provider_name == 'deepseek':
+        payload['thinking'] = provider_settings.get('thinking', 'enabled')
+        payload['reasoning_effort'] = provider_settings.get('reasoning_effort', 'high')
+    response = requests.post(url, headers=headers, json=payload, timeout=60)
+    response.raise_for_status()
+    result = response.json()
+    return result.get('choices', [{}])[0].get('message', {}).get('content', '').strip()
+
+
+def deep_copy_json_compatible(data):
+    """深拷贝JSON兼容对象"""
+    return json.loads(json.dumps(data))
+
 
 def generate_invitation_code():
     """生成随机邀请码"""
@@ -175,20 +516,20 @@ def load_settings():
     try:
         if os.path.exists(SETTINGS_FILE):
             with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
-                settings = json.load(f)
+                settings = normalize_settings(json.load(f))
             logger.info('系统配置加载成功')
             return settings
         else:
             # 配置文件不存在，使用默认配置并创建文件
             logger.info('系统配置文件不存在，使用默认配置')
             save_settings(DEFAULT_SETTINGS)
-            return json.loads(json.dumps(DEFAULT_SETTINGS))  # 深拷贝
+            return deep_copy_json_compatible(DEFAULT_SETTINGS)
     except json.JSONDecodeError as e:
         logger.error(f"系统配置文件格式错误: {e}，使用默认配置")
-        return json.loads(json.dumps(DEFAULT_SETTINGS))
+        return deep_copy_json_compatible(DEFAULT_SETTINGS)
     except Exception as e:
         logger.error(f"加载系统配置文件失败: {e}")
-        return json.loads(json.dumps(DEFAULT_SETTINGS))
+        return deep_copy_json_compatible(DEFAULT_SETTINGS)
 
 def save_settings(settings):
     """
@@ -201,6 +542,7 @@ def save_settings(settings):
         bool: 保存成功返回 True，否则返回 False
     """
     try:
+        settings = normalize_settings(settings)
         with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
             json.dump(settings, f, ensure_ascii=False, indent=2)
         logger.info('系统配置保存成功')
@@ -308,7 +650,7 @@ def login_required(f):
         users = load_users()
         for user in users:
             if user.get('username') == username:
-                if user.get('status') == 'banned':
+                if user.get('role') == 'banned':
                     session.clear()
                     return jsonify({'success': False, 'message': '当前用户已被封禁，请退出账户重新登录', 'banned': True}), 403
                 break
@@ -339,8 +681,13 @@ def set_request_context():
     _request_context.user_identity = f'[User:{user_id}][IP:{ip}]'
 
 @app.after_request
-def log_request_info(response):
-    """在每个请求结束后，记录访问日志"""
+def disable_cache(response):
+    """禁用静态文件缓存，确保开发时始终加载最新版本"""
+    path = request.path
+    if path.endswith(('.css', '.html', '.js')):
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
     method = request.method
     path = request.path
     status = response.status_code
@@ -351,6 +698,118 @@ def log_request_info(response):
 @app.route('/<path:path>')
 def serve_static(path):
     return send_from_directory(app.static_folder, path)
+
+# 加密相关路由
+@app.route('/api/admin/encryption/key_pair', methods=['GET'])
+@admin_required
+def get_encryption_key_pair_info():
+    """获取当前加密密钥对信息（仅返回公钥和key_id，不返回私钥）"""
+    try:
+        key_pair = get_current_key_pair()
+        if key_pair.get('public_key'):
+            return jsonify({
+                'success': True,
+                'public_key': key_pair['public_key'],
+                'key_id': key_pair.get('key_id', 'unknown')
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': '当前无可用密钥对'
+            })
+    except Exception as e:
+        logger.error(f'获取密钥对信息失败: {e}')
+        return jsonify({'success': False, 'message': f'获取失败: {str(e)}'}), 500
+
+
+@app.route('/api/admin/encryption/rotate', methods=['POST'])
+@admin_required
+def rotate_encryption_keys_api():
+    """
+    轮换加密密钥对
+    
+    安全机制：
+    - 生成新的RSA密钥对
+    - 自动使用旧私钥解密现有API密钥
+    - 使用新公钥重新加密所有API密钥
+    - 确保旧密钥被彻底覆盖删除
+    """
+    try:
+        data = request.get_json(silent=True)
+        reencrypt_existing = True
+        if data and 'reencrypt_existing' in data:
+            reencrypt_existing = bool(data['reencrypt_existing'])
+        
+        result = rotate_encryption_keys(reencrypt_existing=reencrypt_existing)
+        
+        if result.get('success'):
+            logger.info(
+                f'管理员 {session.get("username")} 执行了密钥对轮换, '
+                f'旧key_id={result.get("old_key_id")}, 新key_id={result.get("new_key_id")}'
+            )
+            return jsonify(result)
+        else:
+            return jsonify(result), 400
+        
+    except Exception as e:
+        logger.error(f'密钥对轮换失败: {e}')
+        return jsonify({'success': False, 'message': f'轮换失败: {str(e)}'}), 500
+
+
+@app.route('/api/admin/encryption/initialize', methods=['POST'])
+@admin_required
+def initialize_encryption_keys():
+    """
+    初始化加密密钥对
+    
+    安全机制：
+    - 如果不存在密钥对，则生成新的
+    - 如果已存在，要求确认覆盖
+    - 支持自定义密钥对导入
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        force = data.get('force', False)
+        custom_public_key = data.get('public_key')
+        custom_private_key = data.get('private_key')
+        
+        existing = load_key_pair()
+        if existing and not force:
+            return jsonify({
+                'success': False,
+                'message': '密钥对已存在，如需覆盖请设置force=true',
+                'key_id': existing.get('key_id')
+            }), 400
+        
+        if custom_public_key and custom_private_key:
+            # 导入自定义密钥对
+            key_pair = {
+                'public_key': custom_public_key,
+                'private_key': custom_private_key
+            }
+        else:
+            # 生成新的密钥对
+            from api_encryptor import _generate_rsa_key_pair, secrets
+            key_pair = _generate_rsa_key_pair()
+            key_pair['key_id'] = secrets.token_hex(8)
+        
+        result = save_key_pair(key_pair)
+        
+        if result:
+            logger.info(f'管理员 {session.get("username")} 初始化了加密密钥对')
+            return jsonify({
+                'success': True,
+                'message': '密钥对初始化成功',
+                'key_id': key_pair.get('key_id', 'unknown'),
+                'is_custom': bool(custom_public_key and custom_private_key)
+            })
+        else:
+            return jsonify({'success': False, 'message': '密钥对保存失败'}), 500
+        
+    except Exception as e:
+        logger.error(f'密钥对初始化失败: {e}')
+        return jsonify({'success': False, 'message': f'初始化失败: {str(e)}'}), 500
+
 
 class SafeQuestionManager:
     """安全的题库管理类，防止跨目录访问和代码注入"""
@@ -706,7 +1165,7 @@ def login():
             break
     
     if user_found:
-        if user_found.get('status') == 'banned':
+        if user_found.get('role') == 'banned':
             return jsonify({'success': False, 'message': '当前用户已被封禁，请联系管理员'}), 403
         
         session['logged_in'] = True
@@ -771,7 +1230,7 @@ def verify_user_status():
             'message': '用户不存在'
         })
     
-    if user_found.get('status') == 'banned':
+    if user_found.get('role') == 'banned':
         # 用户被封禁
         session.clear()
         return jsonify({
@@ -826,7 +1285,7 @@ def update_user_role(username):
     data = request.get_json()
     new_role = data.get('role')
     
-    if new_role not in ['guest', 'user', 'admin']:
+    if new_role not in ['guest', 'user', 'admin', 'banned']:
         return jsonify({'success': False, 'message': '无效的角色'}), 400
     
     users = load_users()
@@ -895,7 +1354,7 @@ def update_user_invitation_code(username):
 @app.route('/api/admin/deepseek/parse', methods=['POST'])
 @admin_required
 def deepseek_parse():
-    """DeepSeek题目解析（异步任务）
+    """AI题目解析（异步任务）
     
     安全机制：
     - 接收加密的API密钥而不是明文
@@ -908,29 +1367,30 @@ def deepseek_parse():
         encrypted_api_key = data.get('encrypted_api_key', '').strip()
         key_token = data.get('key_token', '').strip()
         file_path = data.get('file_path', 'questions.json')
-        
-        # 安全校验：必须提供加密API密钥和令牌
-        if not encrypted_api_key or not key_token:
-            return jsonify({'success': False, 'message': '缺少加密API密钥或令牌'}), 400
-        
-        # 校验令牌是否有效
-        if not is_key_token_valid(key_token):
-            return jsonify({'success': False, 'message': '加密密钥已过期或无效，请重新获取'}), 401
-        
-        secret_key = get_secret_key(key_token)
-        
-        # 解密API密钥
-        api_key = decrypt_api_key(encrypted_api_key, secret_key)
+
+        settings = load_settings()
+        agent_settings = settings.get('ai_agents', {}).get(QUESTION_ANALYSIS_AGENT_KEY, {})
+        provider_name = agent_settings.get('provider', 'deepseek')
+        provider_settings = settings.get('ai_providers', {}).get(provider_name, {})
+
+        api_key = ''
+        if encrypted_api_key:
+            if not key_token:
+                return jsonify({'success': False, 'message': '缺少加密密钥令牌'}), 400
+            if not is_key_token_valid(key_token):
+                return jsonify({'success': False, 'message': '加密密钥已过期或无效，请重新获取'}), 401
+            secret_key = get_secret_key(key_token)
+            api_key = decrypt_api_key(encrypted_api_key, secret_key)
+            if not api_key:
+                return jsonify({'success': False, 'message': 'API密钥解密失败'}), 400
+            delete_secret_key(key_token)
+        else:
+            api_key = str(provider_settings.get('api_key', '')).strip()
+
         if not api_key:
-            return jsonify({'success': False, 'message': 'API密钥解密失败'}), 400
-        
-        # 立即销毁解密密钥（安全机制：使用后立即清除）
-        delete_secret_key(key_token)
-        
-        import threading
-        import requests
+            return jsonify({'success': False, 'message': '当前解析Agent未提供可用API Key，请在设置页保存或在解析页临时输入'}), 400
+
         import re
-        from concurrent.futures import ThreadPoolExecutor
         
         def parse_questions(api_key_to_use):
             """后台解析题目
@@ -957,8 +1417,9 @@ def deepseek_parse():
             parsing_status['processed'] = 0
             parsing_status['logs'] = []
             parsing_status['status'] = 'running'
-            
-            system_prompt = "# Role\n你是一个顶级全科教育专家与智能助教 Agent。你的核心任务是针对各类题目（选择、填空、主观、代码、计算推理等），生成极简、专业、易懂的答案解析。\n\n# Evaluation Criteria\n1. 极致精炼：剔除所有大话、空话和过度修饰，单句尽量不超过 15 字，直奔主题。\n2. 语言通俗：用最简单的日常语言解释复杂概念，降低读者的认知负荷。\n3. 规范专业：术语使用必须严谨、标准，格式必须统一。\n\n# Workflow By Task Types\n\n## 1. 单项/多项选择题\n- 【核心答案】直接给出正确选项（例：**正确答案：A** 或 **正确答案：A、C**）。\n- 【选项剖析】逐一拆解所有选项。先说该选项对/错在哪里，再指出其背后的核心考点。\n  - 格式：\n    - A. [正确/错误] + [精炼原因]（考点：xxx）\n    - B. [正确/错误] + [精炼原因]（考点：xxx）\n\n## 2. 代码/编程题\n- 【标准源码】提供排版整洁、自带核心注释的正确代码块。\n- 【逐行解析】严禁概括。必须对代码进行逐行（或紧密代码块）说明。\n  - 格式：\n    - `第 X 行`：该行代码的具体功能与变量变化。\n- 【算法核心】用一句话总结该算法的时间复杂度和空间复杂度。\n\n## 3. 逻辑推理与计算题\n- 【最终结果】开门见山给出最终数值或推论结论。\n- 【步步为营】将解题过程拆解为不可分割的微小步骤。\n  - 格式：\n    - 步骤 1：[已知条件转化/第一步计算]\n    - 步骤 2：[公式带入/核心推理]\n    - 步骤 3：[最终推导]\n\n## 4. 普通主观题/其他题型\n- 【参考答案】给出标准、规范的得分点文本。\n- 【核心考点】一句话指出本题考察的知识模块。\n- 【答题思路】用 2-3 个核心要点（Bullet Points）阐述如何从题目联想到答案。\n\n# Output Constraints\n- 严禁任何自我介绍、寒暄或总结性套话。\n- 必须严格使用 Markdown 标题、加粗和列表进行视觉锚定。\n- 遇到公式必须使用 LaTeX 格式。\n- 每一个分析步骤或选项解析，务必做到\"一句话讲透\"。"
+            system_prompt = agent_settings.get('system_prompt', DEFAULT_QUESTION_ANALYSIS_PROMPT)
+            agent_model = agent_settings.get('model_id') or provider_settings.get('model_id') or '未配置模型'
+            parsing_status['message'] = f'正在使用 {provider_name} / {agent_model} 解析题目'
             
             try:
                 for i, question in enumerate(questions):
@@ -994,26 +1455,14 @@ def deepseek_parse():
                     parsing_status['processed'] = i + 1
                     
                     try:
-                        url = "https://api.deepseek.com/v1/chat/completions"
-                        headers = {
-                            "Authorization": f"Bearer {api_key_local}",
-                            "Content-Type": "application/json"
-                        }
-                        api_data = {
-                            "model": "deepseek-chat",
-                            "messages": [
-                                {"role": "system", "content": system_prompt},
-                                {"role": "user", "content": user_message}
-                            ],
-                            "temperature": 0.7,
-                            "max_tokens": 500
-                        }
-                        
-                        response = requests.post(url, headers=headers, json=api_data, timeout=30)
-                        response.raise_for_status()
-                        result = response.json()
-                        analysis = result.get('choices', [{}])[0].get('message', {}).get('content', '')
-                        
+                        analysis = invoke_ai_completion(
+                            provider_name,
+                            provider_settings,
+                            agent_settings,
+                            api_key_local,
+                            system_prompt,
+                            user_message
+                        )
                         analysis = analysis.replace('**', '').replace('`', '').strip()
                         analysis = re.sub(r'<([a-zA-Z][a-zA-Z0-9-]*)>', r'&lt;\1&gt;', analysis)
                         analysis = re.sub(r'</([a-zA-Z][a-zA-Z0-9-]*)>', r'&lt;/\1&gt;', analysis)
@@ -1025,7 +1474,7 @@ def deepseek_parse():
                             parsing_status['logs'].append(f"第 {i+1} 题解析失败，跳过保存")
                         
                     except Exception as e:
-                        logger.error(f'调用DeepSeek API失败: {e}')
+                        logger.error(f'调用AI解析接口失败: {e}')
                         parsing_status['logs'].append(f"第 {i+1} 题解析失败: {str(e)}")
                     
                     if (i + 1) % 5 == 0 or i + 1 == total:
@@ -1044,7 +1493,7 @@ def deepseek_parse():
                 parsing_status['running'] = False
                 parsing_status['status'] = 'completed'
                 parsing_status['message'] = f"解析完成！共处理 {total} 道题目"
-                logger.info(f'管理员 {session.get("username")} 完成DeepSeek解析任务')
+                logger.info(f'管理员 {session.get("username")} 完成AI解析任务，provider={provider_name}')
             finally:
                 # 解析完成后彻底销毁API密钥
                 del api_key_local
@@ -1433,7 +1882,7 @@ def get_settings():
         settings = load_settings()
         return jsonify({
             'success': True,
-            'settings': settings
+            'settings': get_public_settings(settings)
         })
     except Exception as e:
         logger.error(f'获取系统配置失败: {e}')
@@ -1457,7 +1906,12 @@ def save_settings_api():
         if not isinstance(data, dict):
             return jsonify({'success': False, 'message': '配置格式错误：根节点应为对象'}), 400
         
-        settings = data.get('settings', data)
+        settings_input = data.get('settings')
+        if settings_input is not None and not isinstance(settings_input, dict):
+            return jsonify({'success': False, 'message': '配置格式错误：settings 应为对象'}), 400
+        
+        existing_settings = load_settings()
+        settings = normalize_settings(settings_input if settings_input is not None else data)
         
         key_token = data.get('key_token')
         updated_providers = []
@@ -1470,8 +1924,7 @@ def save_settings_api():
             if not secret_key:
                 return jsonify({'success': False, 'message': '加密密钥不存在'}), 400
             
-            providers = ['openai', 'anthropic', 'deepseek']
-            for provider in providers:
+            for provider in AI_PROVIDER_NAMES:
                 encrypted_key_field = f'encrypted_api_key_{provider}'
                 encrypted_api_key = data.get(encrypted_key_field)
                 
@@ -1488,6 +1941,17 @@ def save_settings_api():
             
             delete_secret_key(key_token)
         
+        existing_providers = existing_settings.get('ai_providers', {})
+        incoming_providers = settings.get('ai_providers', {})
+        for provider in AI_PROVIDER_NAMES:
+            if provider not in incoming_providers:
+                continue
+            encrypted_key_field = f'encrypted_api_key_{provider}'
+            incoming_key = str(incoming_providers[provider].get('api_key', '') or '').strip()
+            if not incoming_key and not data.get(encrypted_key_field):
+                incoming_providers[provider]['api_key'] = existing_providers.get(provider, {}).get('api_key', '')
+        settings['ai_providers'] = incoming_providers
+
         if save_settings(settings):
             if updated_providers:
                 logger.info(f'管理员 {session.get("username")} 保存了系统配置，更新了 {", ".join(updated_providers)} 的 API 密钥')
@@ -1495,7 +1959,8 @@ def save_settings_api():
                 logger.info(f'管理员 {session.get("username")} 保存了系统配置')
             return jsonify({
                 'success': True,
-                'message': '配置保存成功'
+                'message': '配置保存成功',
+                'settings': get_public_settings(settings)
             })
         else:
             return jsonify({'success': False, 'message': '配置保存失败'}), 500

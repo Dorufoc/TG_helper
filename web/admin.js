@@ -42,6 +42,93 @@ async function apiFetch(url, options = {}) {
     return response;
 }
 
+const DEFAULT_SETTINGS = {
+    account: {
+        default_role: 'guest',
+        auth_timeout_minutes: 1
+    },
+    ai_providers: {
+        openai: {
+            base_url: 'https://api.openai.com',
+            api_key: '',
+            model_id: 'gpt-4o',
+            max_tokens: 4096
+        },
+        anthropic: {
+            base_url: 'https://api.anthropic.com',
+            api_key: '',
+            model_id: 'claude-3-5-sonnet-latest',
+            max_tokens: 4096
+        },
+        deepseek: {
+            base_url: 'https://api.deepseek.com',
+            api_format: 'openai',
+            api_key: '',
+            model_id: 'deepseek-v4-pro',
+            thinking: 'enabled',
+            reasoning_effort: 'high',
+            max_tokens: 4096
+        }
+    },
+    ai_agents: {
+        question_analysis: {
+            name: '题目解析 Agent',
+            provider: 'deepseek',
+            model_id: '',
+            temperature: 0.7,
+            max_tokens: 500,
+            system_prompt: ''
+        }
+    }
+};
+
+const AI_PROVIDER_META = {
+    openai: {
+        label: 'OpenAI',
+        description: '适合通用对话与推理任务'
+    },
+    anthropic: {
+        label: 'Anthropic',
+        description: '适合长上下文与稳健生成'
+    },
+    deepseek: {
+        label: 'DeepSeek',
+        description: '适合高性价比解析与推理'
+    }
+};
+
+function deepClone(value) {
+    return JSON.parse(JSON.stringify(value));
+}
+
+function mergeWithDefaults(defaults, source) {
+    if (!defaults || typeof defaults !== 'object' || Array.isArray(defaults)) {
+        return source ?? defaults;
+    }
+    const output = {};
+    const safeSource = source && typeof source === 'object' && !Array.isArray(source) ? source : {};
+    Object.keys(defaults).forEach((key) => {
+        output[key] = mergeWithDefaults(defaults[key], safeSource[key]);
+    });
+    Object.keys(safeSource).forEach((key) => {
+        if (!(key in output)) {
+            output[key] = safeSource[key];
+        }
+    });
+    return output;
+}
+
+function normalizeSettings(rawSettings) {
+    if (!rawSettings || typeof rawSettings !== 'object') {
+        return mergeWithDefaults(DEFAULT_SETTINGS, {});
+    }
+    const merged = mergeWithDefaults(DEFAULT_SETTINGS, rawSettings);
+    if (typeof merged.ai_agents?.question_analysis?.temperature !== 'number') {
+        merged.ai_agents.question_analysis.temperature = 0.7;
+    }
+    return merged;
+}
+
 createApp({
     data() {
         return {
@@ -50,7 +137,8 @@ createApp({
             isAdmin: false,
             isDarkMode: false,
             activeTab: 'users',
-            drawerOpen: false,
+            drawerOpen: true,
+            isMobile: false,
             loginForm: {
                 username: '',
                 password: '',
@@ -92,6 +180,7 @@ createApp({
             showUploadModal: false,
             showRenameModalFlag: false,
             isDragOver: false,
+            dragCounter: 0,
             selectedUploadFile: null,
             uploadProgress: 0,
             renameForm: {
@@ -101,42 +190,15 @@ createApp({
             },
             activeAiProvider: 'openai',
             savingSettings: false,
-            settings: {
-                account: {
-                    default_role: 'guest',
-                    auth_timeout_minutes: 1
-                },
-                ai_providers: {
-                    openai: {
-                        base_url: 'https://api.openai.com',
-                        api_key: '',
-                        model_id: 'gpt-4o',
-                        max_tokens: 4096
-                    },
-                    anthropic: {
-                        base_url: 'https://api.anthropic.com',
-                        api_key: '',
-                        model_id: 'claude-3-5-sonnet-latest',
-                        max_tokens: 4096
-                    },
-                    deepseek: {
-                        base_url: 'https://api.deepseek.com',
-                        api_format: 'openai',
-                        api_key: '',
-                        model_id: 'deepseek-v4-pro',
-                        thinking: 'enabled',
-                        reasoning_effort: 'high'
-                    }
-                }
-            }
+            settings: deepClone(DEFAULT_SETTINGS)
         };
     },
     computed: {
         activeUsers() {
-            return this.users.filter(u => u.status === 'active').length;
+            return this.users.filter(u => u.role !== 'banned').length;
         },
         bannedUsers() {
-            return this.users.filter(u => u.status === 'banned').length;
+            return this.users.filter(u => u.role === 'banned').length;
         },
         adminUsers() {
             return this.users.filter(u => u.role === 'admin').length;
@@ -147,6 +209,12 @@ createApp({
         deepseekProgressPercent() {
             if (this.deepseek.total === 0) return 0;
             return Math.floor((this.deepseek.processed / this.deepseek.total) * 100);
+        },
+        analysisAgent() {
+            return this.settings.ai_agents.question_analysis;
+        },
+        analysisProviderMeta() {
+            return AI_PROVIDER_META[this.analysisAgent.provider] || AI_PROVIDER_META.deepseek;
         }
     },
     async created() {
@@ -156,6 +224,11 @@ createApp({
             this.isDarkMode = true;
             document.body.classList.add('dark-mode');
         }
+        this.isMobile = window.innerWidth < 768;
+        this.drawerOpen = !this.isMobile;
+        window.addEventListener('resize', () => {
+            this.isMobile = window.innerWidth < 768;
+        });
         await this.checkLoginStatus();
         if (this.isAdmin) {
             await this.loadDeepseekFiles();
@@ -164,6 +237,16 @@ createApp({
         }
     },
     methods: {
+        formatPassword(password) {
+            /* 格式化密码显示，截断长哈希值 */
+            if (!password || password.length <= 12) {
+                return password;
+            }
+            return password.substring(0, 8) + '...' + password.substring(password.length - 4);
+        },
+        toggleDrawer() {
+            this.drawerOpen = !this.drawerOpen;
+        },
         switchTab(tab) {
             this.activeTab = tab;
             this.drawerOpen = false;
@@ -171,7 +254,7 @@ createApp({
         getTabTitle() {
             const titles = {
                 users: '用户管理',
-                deepseek: 'DeepSeek解析',
+                deepseek: 'AI解析',
                 question_bank: '题库管理',
                 settings: '系统设置'
             };
@@ -180,11 +263,14 @@ createApp({
         getTabSubtitle() {
             const subtitles = {
                 users: '管理系统用户、角色和权限',
-                deepseek: '使用 AI 为题库生成详细解析',
+                deepseek: '使用可配置 AI Agent 为题库生成详细解析',
                 question_bank: '上传、管理和维护题库文件',
-                settings: '配置账号系统和 AI 服务商参数'
+                settings: '配置账号系统、AI 服务商与内部 Agent'
             };
             return subtitles[this.activeTab] || '';
+        },
+        getProviderLabel(provider) {
+            return AI_PROVIDER_META[provider]?.label || provider;
         },
         toggleDarkMode() {
             this.isDarkMode = !this.isDarkMode;
@@ -338,29 +424,29 @@ createApp({
             }
         },
         async startParsing() {
-            if (!this.deepseek.apiKey) {
-                this.showNotification('请输入DeepSeek API密钥', 'error');
-                return;
-            }
             if (!this.deepseek.selectedFile) {
                 this.showNotification('请选择题库文件', 'error');
                 return;
             }
 
             try {
-                await this.loadEncryptionKey();
-                
-                if (!this.deepseek.encryptionKey || !this.deepseek.keyToken) {
-                    this.showNotification('加密密钥加载失败', 'error');
-                    return;
+                let encryptedApiKey = '';
+
+                if (this.deepseek.apiKey) {
+                    await this.loadEncryptionKey();
+                    
+                    if (!this.deepseek.encryptionKey || !this.deepseek.keyToken) {
+                        this.showNotification('加密密钥加载失败', 'error');
+                        return;
+                    }
+
+                    encryptedApiKey = ApiEncryption.encryptApiKey(
+                        this.deepseek.apiKey, 
+                        this.deepseek.encryptionKey
+                    );
+
+                    this.deepseek.apiKey = '';
                 }
-                
-                const encryptedApiKey = ApiEncryption.encryptApiKey(
-                    this.deepseek.apiKey, 
-                    this.deepseek.encryptionKey
-                );
-                
-                this.deepseek.apiKey = '';
                 
                 const response = await apiFetch('/api/admin/deepseek/parse', {
                     method: 'POST',
@@ -454,6 +540,60 @@ createApp({
             }
         },
         async updateRole(user) {
+            if (user.role === 'banned') {
+                this.confirmModal = {
+                    show: true,
+                    title: '确认封禁',
+                    message: `确定要封禁用户 ${user.username} 吗？该用户将无法登录和使用答题功能。`,
+                    onConfirm: async (confirmed) => {
+                        this.confirmModal.show = false;
+                        if (!confirmed) {
+                            user.role = user._prevRole;
+                            return;
+                        }
+                        try {
+                            const response = await apiFetch(`/api/admin/users/${user.username}/role`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ role: user.role })
+                            });
+                            const data = await response.json();
+                            if (data.success) {
+                                this.showNotification(`用户 ${user.username} 已封禁`, 'success');
+                            } else {
+                                user.role = user._prevRole;
+                                this.showNotification(data.message, 'error');
+                            }
+                        } catch (error) {
+                            user.role = user._prevRole;
+                            this.showNotification('操作失败', 'error');
+                        }
+                    }
+                };
+                return;
+            }
+
+            if (user._prevRole === 'banned') {
+                try {
+                    const response = await apiFetch(`/api/admin/users/${user.username}/role`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ role: user.role })
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        this.showNotification(`用户 ${user.username} 已解封`, 'success');
+                    } else {
+                        user.role = user._prevRole;
+                        this.showNotification(data.message, 'error');
+                    }
+                } catch (error) {
+                    user.role = user._prevRole;
+                    this.showNotification('操作失败', 'error');
+                }
+                return;
+            }
+
             try {
                 const response = await apiFetch(`/api/admin/users/${user.username}/role`, {
                     method: 'PUT',
@@ -464,56 +604,12 @@ createApp({
                 if (data.success) {
                     this.showNotification('角色修改成功', 'success');
                 } else {
+                    user.role = user._prevRole;
                     this.showNotification(data.message, 'error');
                 }
             } catch (error) {
+                user.role = user._prevRole;
                 this.showNotification('修改失败', 'error');
-            }
-        },
-        async banUser(username) {
-            this.confirmModal = {
-                show: true,
-                title: '确认封禁',
-                message: `确定要封禁用户 ${username} 吗？该用户将无法登录和使用答题功能。`,
-                onConfirm: async (confirmed) => {
-                    this.confirmModal.show = false;
-                    if (confirmed) {
-                        try {
-                            const response = await apiFetch(`/api/admin/users/${username}/status`, {
-                                method: 'PUT',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ status: 'banned' })
-                            });
-                            const data = await response.json();
-                            if (data.success) {
-                                this.showNotification(`用户 ${username} 已封禁`, 'success');
-                                await this.loadUsers();
-                            } else {
-                                this.showNotification(data.message, 'error');
-                            }
-                        } catch (error) {
-                            this.showNotification('操作失败', 'error');
-                        }
-                    }
-                }
-            };
-        },
-        async unbanUser(username) {
-            try {
-                const response = await apiFetch(`/api/admin/users/${username}/status`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ status: 'active' })
-                });
-                const data = await response.json();
-                if (data.success) {
-                    this.showNotification(`用户 ${username} 已解封`, 'success');
-                    await this.loadUsers();
-                } else {
-                    this.showNotification(data.message, 'error');
-                }
-            } catch (error) {
-                this.showNotification('操作失败', 'error');
             }
         },
         async resetInvitationCode(username) {
@@ -666,11 +762,23 @@ createApp({
                 }
             };
         },
-        handleDragOver() {
-            // 阻止默认行为，允许drop
+        handleDragOver(e) {
+            e.preventDefault();
+        },
+        handleDragEnter(e) {
+            e.preventDefault();
+            this.dragCounter++;
+            this.isDragOver = true;
+        },
+        handleDragLeave(e) {
+            this.dragCounter--;
+            if (this.dragCounter === 0) {
+                this.isDragOver = false;
+            }
         },
         handleFileDrop(e) {
             this.isDragOver = false;
+            this.dragCounter = 0;
             const files = e.dataTransfer.files;
             if (files && files.length > 0) {
                 const file = files[0];
@@ -730,6 +838,8 @@ createApp({
                 xhr.setRequestHeader('X-User-Identity', CURRENT_USERNAME || 'unknown');
                 xhr.send(formData);
 
+                this.uploadProgress = 99;
+
                 const data = await promise;
                 if (data.success) {
                     this.showNotification(data.message, 'success');
@@ -750,6 +860,7 @@ createApp({
             this.selectedUploadFile = null;
             this.uploadProgress = 0;
             this.isDragOver = false;
+            this.dragCounter = 0;
             if (this.$refs.fileInput) {
                 this.$refs.fileInput.value = '';
             }
@@ -759,23 +870,10 @@ createApp({
                 const response = await apiFetch('/api/admin/settings');
                 const data = await response.json();
                 if (data.success) {
-                    this.settings = data.settings;
-                    if (!this.settings.ai_providers) {
-                        this.settings.ai_providers = {
-                            openai: { base_url: 'https://api.openai.com', api_key: '', model_id: 'gpt-4o', max_tokens: 4096 },
-                            anthropic: { base_url: 'https://api.anthropic.com', api_key: '', model_id: 'claude-3-5-sonnet-latest', max_tokens: 4096 },
-                            deepseek: { base_url: 'https://api.deepseek.com', api_format: 'openai', api_key: '', model_id: 'deepseek-v4-pro', thinking: 'enabled', reasoning_effort: 'high' }
-                        };
-                    }
-                    if (!this.settings.ai_providers.openai) {
-                        this.settings.ai_providers.openai = { base_url: 'https://api.openai.com', api_key: '', model_id: 'gpt-4o', max_tokens: 4096 };
-                    }
-                    if (!this.settings.ai_providers.anthropic) {
-                        this.settings.ai_providers.anthropic = { base_url: 'https://api.anthropic.com', api_key: '', model_id: 'claude-3-5-sonnet-latest', max_tokens: 4096 };
-                    }
-                    if (!this.settings.ai_providers.deepseek) {
-                        this.settings.ai_providers.deepseek = { base_url: 'https://api.deepseek.com', api_format: 'openai', api_key: '', model_id: 'deepseek-v4-pro', thinking: 'enabled', reasoning_effort: 'high' };
-                    }
+                    this.settings = normalizeSettings(data.settings);
+                    this.activeAiProvider = this.settings.ai_providers[this.activeAiProvider]
+                        ? this.activeAiProvider
+                        : (this.analysisAgent.provider || 'openai');
                 } else {
                     this.showNotification('加载设置失败', 'error');
                 }
@@ -793,11 +891,11 @@ createApp({
             try {
                 this.savingSettings = true;
                 
-                const providersToSave = ['openai', 'anthropic', 'deepseek'];
+                const providersToSave = Object.keys(this.settings.ai_providers || {});
                 let hasApiKeyToUpdate = false;
                 
                 for (const provider of providersToSave) {
-                    if (this.settings.ai_providers[provider].api_key && this.settings.ai_providers[provider].api_key.trim()) {
+                    if (this.settings.ai_providers[provider]?.api_key && this.settings.ai_providers[provider].api_key.trim()) {
                         hasApiKeyToUpdate = true;
                         break;
                     }
@@ -826,7 +924,7 @@ createApp({
                 }
 
                 const savePayload = {
-                    settings: JSON.parse(JSON.stringify(this.settings)),
+                    settings: deepClone(normalizeSettings(this.settings)),
                     ...encryptedPayload
                 };
 
@@ -838,7 +936,11 @@ createApp({
                 const data = await response.json();
                 if (data.success) {
                     this.showNotification('设置保存成功', 'success');
-                    await this.loadSettings();
+                    if (data.settings) {
+                        this.settings = data.settings;
+                    } else {
+                        await this.loadSettings();
+                    }
                 } else {
                     this.showNotification(data.message || '保存设置失败', 'error');
                 }

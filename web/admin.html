@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#EADDFF">
     <title>管理员后台 - 管理控制台</title>
     <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="admin.css">
+    <link rel="stylesheet" href="admin.css?v=3">
     <script src="vue.global.js"></script>
     <script>
         const savedTheme = localStorage.getItem('theme');
@@ -25,17 +25,13 @@
         </div>
 
         <transition name="modal-fade">
-            <div v-if="confirmModal.show" class="modal-overlay" @click="confirmModal.onConfirm(false)">
-                <div class="modal" @click.stop>
-                    <div class="modal-header">
-                        <h3>{{ confirmModal.title }}</h3>
-                    </div>
-                    <div class="modal-body">
-                        <p>{{ confirmModal.message }}</p>
-                    </div>
-                    <div class="modal-actions">
-                        <button @click="confirmModal.onConfirm(false)" class="btn btn-text">取消</button>
-                        <button @click="confirmModal.onConfirm(true)" class="btn btn-filled">确认</button>
+            <div v-if="confirmModal.show" class="modal" @click="confirmModal.onConfirm(false)">
+                <div class="modal-content" @click.stop>
+                    <h3>{{ confirmModal.title }}</h3>
+                    <p>{{ confirmModal.message }}</p>
+                    <div class="modal-buttons">
+                        <button @click="confirmModal.onConfirm(false)" class="btn btn-secondary">取消</button>
+                        <button @click="confirmModal.onConfirm(true)" class="btn btn-primary">确认</button>
                     </div>
                 </div>
             </div>
@@ -112,9 +108,9 @@
         </div>
 
         <div v-else class="admin-layout">
-            <div class="drawer-backdrop" v-if="drawerOpen" @click="drawerOpen = false"></div>
+            <div class="drawer-backdrop" v-if="drawerOpen && isMobile" @click="drawerOpen = false"></div>
             
-            <aside :class="['drawer', { open: drawerOpen }]">
+            <aside :class="['drawer', { open: drawerOpen && isMobile, collapsed: !drawerOpen && !isMobile }]">
                 <div class="drawer-header">
                     <div class="drawer-avatar">
                         <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
@@ -177,7 +173,7 @@
 
             <main class="main-content">
                 <header class="top-app-bar">
-                    <button @click="drawerOpen = true" class="icon-btn menu-btn" aria-label="打开导航菜单">
+                    <button @click="toggleDrawer" class="icon-btn menu-btn" aria-label="切换导航菜单">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <line x1="3" y1="12" x2="21" y2="12"/>
                             <line x1="3" y1="6" x2="21" y2="6"/>
@@ -270,29 +266,34 @@
                         <div class="data-card">
                             <div class="users-table-wrapper">
                                 <table class="users-table">
+                                    <colgroup>
+                                        <col class="col-username">
+                                        <col class="col-password">
+                                        <col class="col-code">
+                                        <col class="col-role">
+                                        <col class="col-time">
+                                    </colgroup>
                                     <thead>
                                         <tr>
                                             <th>用户名</th>
                                             <th>密码</th>
                                             <th>邀请码</th>
                                             <th>角色</th>
-                                            <th>状态</th>
-                                            <th class="hide-mobile">注册时间</th>
-                                            <th>操作</th>
+                                            <th>注册时间</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr v-for="user in users" :key="user.username" :class="{ 'banned-row': user.status === 'banned' }">
+                                        <tr v-for="user in users" :key="user.username" :class="{ 'banned-row': user.role === 'banned' }">
                                             <td class="username-cell">{{ user.username }}</td>
                                             <td class="password-cell">
                                                 <span v-if="!user.showPassword" class="password-mask">••••••••</span>
                                                 <span v-else class="password-plain">{{ user.password }}</span>
                                                 <button @click="user.showPassword = !user.showPassword" class="icon-btn-small" :title="user.showPassword ? '隐藏密码' : '显示密码'">
-                                                    <svg v-if="!user.showPassword" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                    <svg v-if="!user.showPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                                                         <circle cx="12" cy="12" r="3"/>
                                                     </svg>
-                                                    <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                    <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                                         <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
                                                         <line x1="1" y1="1" x2="23" y2="23"/>
                                                     </svg>
@@ -301,33 +302,21 @@
                                             <td class="code-cell">
                                                 <span class="code-text">{{ user.invitation_code }}</span>
                                                 <button @click="resetInvitationCode(user.username)" class="icon-btn-small" title="重置邀请码">
-                                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                                         <polyline points="23 4 23 10 17 10"/>
                                                         <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
                                                     </svg>
                                                 </button>
                                             </td>
                                             <td class="role-cell">
-                                                <select v-model="user.role" @change="updateRole(user)" :disabled="user.username === username">
+                                                <select v-model="user.role" @mousedown="user._prevRole = user.role" @change="updateRole(user)" :class="{ 'banned-role': user.role === 'banned' }" :disabled="user.username === username">
                                                     <option value="guest">游客</option>
                                                     <option value="user">普通用户</option>
                                                     <option value="admin">管理员</option>
+                                                    <option value="banned">封禁</option>
                                                 </select>
                                             </td>
-                                            <td class="status-cell">
-                                                <span :class="['status-chip', user.status]">
-                                                    <span class="chip-dot"></span>
-                                                    {{ user.status === 'active' ? '正常' : '已封禁' }}
-                                                </span>
-                                                <div class="status-actions">
-                                                    <button v-if="user.status === 'active'" @click="banUser(user.username)" class="btn btn-danger btn-small" :disabled="user.username === username">封禁</button>
-                                                    <button v-else @click="unbanUser(user.username)" class="btn btn-success btn-small" :disabled="user.username === username">解封</button>
-                                                </div>
-                                            </td>
-                                            <td class="time-cell hide-mobile">{{ user.created_at }}</td>
-                                            <td class="actions-cell">
-                                                <button @click="showChangePasswordModal(user.username)" class="btn btn-tonal btn-small">修改密码</button>
-                                            </td>
+                                            <td class="time-cell">{{ user.created_at }}</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -815,93 +804,85 @@
         </div>
 
         <transition name="modal-fade">
-            <div v-if="changePasswordModal.show" class="modal-overlay" @click.self="changePasswordModal.show = false">
-                <div class="modal">
-                    <div class="modal-header">
-                        <h3>修改用户密码</h3>
-                    </div>
-                    <div class="modal-body">
-                        <p class="modal-user">用户: {{ changePasswordModal.username }}</p>
-                        <div class="form-group">
-                            <label>新密码</label>
-                            <div class="input-wrapper">
-                                <svg class="input-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                                </svg>
-                                <input type="password" v-model="changePasswordModal.newPassword" placeholder="请输入新密码（至少6个字符）">
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>确认密码</label>
-                            <div class="input-wrapper">
-                                <svg class="input-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                                </svg>
-                                <input type="password" v-model="changePasswordModal.confirmPassword" placeholder="请再次输入新密码">
-                            </div>
+            <div v-if="changePasswordModal.show" class="modal" @click.self="changePasswordModal.show = false">
+                <div class="modal-content">
+                    <h3>修改用户密码</h3>
+                    <p class="modal-user">用户: {{ changePasswordModal.username }}</p>
+                    <div class="form-group">
+                        <label>新密码</label>
+                        <div class="input-wrapper">
+                            <svg class="input-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                            </svg>
+                            <input type="password" v-model="changePasswordModal.newPassword" placeholder="请输入新密码（至少6个字符）">
                         </div>
                     </div>
-                    <div class="modal-actions">
-                        <button @click="changePasswordModal.show = false" class="btn btn-text">取消</button>
-                        <button @click="handleChangePassword" class="btn btn-filled">确认修改</button>
+                    <div class="form-group">
+                        <label>确认密码</label>
+                        <div class="input-wrapper">
+                            <svg class="input-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                            </svg>
+                            <input type="password" v-model="changePasswordModal.confirmPassword" placeholder="请再次输入新密码">
+                        </div>
+                    </div>
+                    <div class="modal-buttons">
+                        <button @click="changePasswordModal.show = false" class="btn btn-secondary">取消</button>
+                        <button @click="handleChangePassword" class="btn btn-primary">确认修改</button>
                     </div>
                 </div>
             </div>
         </transition>
 
         <transition name="modal-fade">
-            <div v-if="showUploadModal" class="modal-overlay" @click.self="showUploadModal = false">
-                <div class="modal upload-modal">
-                    <div class="modal-header">
-                        <h3>上传题库</h3>
-                    </div>
-                    <div class="modal-body">
-                        <p class="modal-description">仅支持JSON格式的题库文件</p>
-                        
-                        <div 
-                            class="upload-drop-zone" 
-                            :class="{ 'drag-over': isDragOver, 'uploading': uploadProgress > 0 }"
-                            @dragover.prevent="handleDragOver"
-                            @dragenter.prevent="isDragOver = true"
-                            @dragleave.prevent="isDragOver = false"
-                            @drop.prevent="handleFileDrop"
-                            @click="triggerFileInput"
+            <div v-if="showUploadModal" class="modal" @click.self="showUploadModal = false">
+                <div class="modal-content upload-modal">
+                    <h3>上传题库</h3>
+                    <p class="modal-description">仅支持JSON格式的题库文件</p>
+                    
+                    <div 
+                        class="upload-drop-zone" 
+                        :class="{ 'drag-over': isDragOver, 'uploading': uploadProgress > 0 }"
+                        @dragover.prevent="handleDragOver"
+                        @dragenter.prevent="handleDragEnter"
+                        @dragleave.prevent="handleDragLeave"
+                        @drop.prevent="handleFileDrop"
+                        @click="triggerFileInput"
+                    >
+                        <input 
+                            ref="fileInput"
+                            type="file" 
+                            accept=".json" 
+                            @change="handleFileSelect"
+                            style="display: none"
                         >
-                            <input 
-                                ref="fileInput"
-                                type="file" 
-                                accept=".json" 
-                                @change="handleFileSelect"
-                                style="display: none"
-                            >
-                            <div v-if="uploadProgress === 0" class="upload-placeholder">
-                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                                    <polyline points="17 8 12 3 7 8"/>
-                                    <line x1="12" y1="3" x2="12" y2="15"/>
+                        <div v-if="uploadProgress === 0" class="upload-placeholder">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="17 8 12 3 7 8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                            <p v-if="!selectedUploadFile">拖拽JSON文件到此处</p>
+                            <p v-else class="selected-file">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                    <polyline points="14 2 14 8 20 8"/>
                                 </svg>
-                                <p v-if="!selectedUploadFile">拖拽JSON文件到此处</p>
-                                <p v-else class="selected-file">
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                                        <polyline points="14 2 14 8 20 8"/>
-                                    </svg>
-                                    {{ selectedUploadFile.name }}
-                                </p>
+                                {{ selectedUploadFile.name }}
+                            </p>
+                        </div>
+                        <div v-else class="upload-progress-inline">
+                            <div class="progress-track-inline">
+                                <div class="progress-bar-fill" :class="{ 'processing': uploadProgress >= 99 }" :style="{ width: uploadProgress + '%' }"></div>
                             </div>
-                            <div v-else class="upload-progress-inline">
-                                <div class="progress-track-inline">
-                                    <div class="progress-bar-fill" :style="{ width: uploadProgress + '%' }"></div>
-                                </div>
-                                <span class="progress-text">上传中... {{ uploadProgress }}%</span>
-                            </div>
+                            <span class="progress-text">{{ uploadProgress >= 99 ? '服务器处理中...' : '上传中... ' + uploadProgress + '%' }}</span>
                         </div>
                     </div>
-                    <div class="modal-actions">
-                        <button @click="closeUploadModal" class="btn btn-text" :disabled="uploadProgress > 0">取消</button>
-                        <button @click="handleUpload" class="btn btn-filled" :disabled="!selectedUploadFile || uploadProgress > 0">
+                    <div class="modal-buttons">
+                        <button @click="closeUploadModal" class="btn btn-secondary" :disabled="uploadProgress > 0">取消</button>
+                        <button @click="handleUpload" class="btn btn-primary" :disabled="!selectedUploadFile || uploadProgress > 0">
                             确认上传
                         </button>
                     </div>
@@ -910,26 +891,22 @@
         </transition>
 
         <transition name="modal-fade">
-            <div v-if="showRenameModalFlag" class="modal-overlay" @click.self="showRenameModalFlag = false">
-                <div class="modal">
-                    <div class="modal-header">
-                        <h3>重命名题库</h3>
+            <div v-if="showRenameModalFlag" class="modal" @click.self="showRenameModalFlag = false">
+                <div class="modal-content">
+                    <h3>重命名题库</h3>
+                    <p class="modal-current">当前名称: {{ renameForm.oldName }}</p>
+                    <div class="form-group">
+                        <label>新名称</label>
+                        <input 
+                            type="text" 
+                            v-model="renameForm.newName" 
+                            placeholder="请输入新名称"
+                            @keyup.enter="handleRename"
+                        >
                     </div>
-                    <div class="modal-body">
-                        <p class="modal-current">当前名称: {{ renameForm.oldName }}</p>
-                        <div class="form-group">
-                            <label>新名称</label>
-                            <input 
-                                type="text" 
-                                v-model="renameForm.newName" 
-                                placeholder="请输入新名称"
-                                @keyup.enter="handleRename"
-                            >
-                        </div>
-                    </div>
-                    <div class="modal-actions">
-                        <button @click="showRenameModalFlag = false" class="btn btn-text">取消</button>
-                        <button @click="handleRename" class="btn btn-filled" :disabled="!renameForm.newName.trim()">确认重命名</button>
+                    <div class="modal-buttons">
+                        <button @click="showRenameModalFlag = false" class="btn btn-secondary">取消</button>
+                        <button @click="handleRename" class="btn btn-primary" :disabled="!renameForm.newName.trim()">确认重命名</button>
                     </div>
                 </div>
             </div>
