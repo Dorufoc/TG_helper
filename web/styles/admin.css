@@ -1,0 +1,43 @@
+/* ========================================
+   Admin Backend - MD3 Complete Styles
+   Material Design 3 Responsive Layout
+   
+   This is the main entry point that imports all admin modules.
+   Modules are imported in logical dependency order:
+   1. Shared components (buttons, transitions, utilities, keyframes)
+   2. Layout (base structure)
+   3. Drawer (navigation)
+   4. Cards (content containers)
+   5. Tables (data display)
+   6. Modals (dialogs)
+   7. Forms (input elements)
+   8. Login (authentication pages)
+   9. Responsive (media queries - must be last)
+   ======================================== */
+
+/* Shared Components - Buttons, Transitions, Utilities, Keyframes */
+@import './admin/admin-shared.css';
+
+/* Layout - Admin structure, top app bar, tab content */
+@import './admin/admin-layout.css';
+
+/* Drawer - Navigation drawer and backdrop */
+@import './admin/admin-drawer.css';
+
+/* Cards - Content cards, stats, progress, logs, question bank, provider, settings */
+@import './admin/admin-cards.css';
+
+/* Tables - Users table and data display */
+@import './admin/admin-tables.css';
+
+/* Modals - Upload modal and admin-specific dialogs */
+@import './admin/admin-modals.css';
+
+/* Forms - Input wrapper, form groups */
+@import './admin/admin-forms.css';
+
+/* Login - Authentication and access denied pages */
+@import './admin/login.css';
+
+/* Responsive - Media queries (must be imported last to override previous styles) */
+@import './admin/admin-responsive.css';

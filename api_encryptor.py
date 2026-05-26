@@ -278,6 +278,70 @@ def decrypt_api_key(encrypted_data: str, use_private_key: Optional[str] = None) 
         return None
 
 
+def _encrypt_with_aes_gcm(plaintext: str, secret_key: bytes) -> str:
+    """
+    使用AES-256-GCM加密数据
+
+    Args:
+        plaintext: 明文字符串
+        secret_key: 32字节AES密钥
+
+    Returns:
+        Base64编码的密文（格式：IV(12字节) + ciphertext + auth_tag(16字节)）
+    """
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    aesgcm = AESGCM(secret_key)
+    iv = secrets.token_bytes(12)
+    ciphertext = aesgcm.encrypt(iv, plaintext.encode('utf-8'), None)
+    # ciphertext 包含 auth_tag（最后16字节）
+    encrypted = iv + ciphertext
+    return base64.b64encode(encrypted).decode('utf-8')
+
+
+def _decrypt_with_aes_gcm(encrypted_b64: str, secret_key: bytes) -> Optional[str]:
+    """
+    使用AES-256-GCM解密数据
+
+    Args:
+        encrypted_b64: Base64编码的密文（格式：IV + ciphertext + auth_tag）
+        secret_key: 32字节AES密钥
+
+    Returns:
+        解密后的明文，失败返回None
+    """
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    try:
+        encrypted = base64.b64decode(encrypted_b64)
+        iv = encrypted[:12]
+        ciphertext = encrypted[12:]
+        aesgcm = AESGCM(secret_key)
+        plaintext = aesgcm.decrypt(iv, ciphertext, None)
+        return plaintext.decode('utf-8')
+    except Exception as e:
+        logger.error(f"AES-GCM解密失败: {e}")
+        return None
+
+
+def decrypt_transport_key(encrypted_data: str, key_token: str) -> Optional[str]:
+    """
+    使用临时AES密钥解密传输数据（用于前端加密传输的API密钥等敏感数据）
+
+    Args:
+        encrypted_data: Base64编码的密文
+        key_token: 加密令牌
+
+    Returns:
+        解密后的明文，失败返回None
+    """
+    secret_key = get_secret_key(key_token)
+    if not secret_key:
+        logger.error("临时密钥不存在或已过期")
+        return None
+    return _decrypt_with_aes_gcm(encrypted_data, secret_key)
+
+
 def cleanup_expired_secrets() -> None:
     """清理过期的加密密钥，防止内存泄漏"""
     now = datetime.datetime.now()
@@ -292,28 +356,28 @@ def cleanup_expired_secrets() -> None:
 
 def generate_encryption_key() -> Dict[str, str]:
     """
-    生成临时XOR加密密钥（用于前端加密传输）
-    
+    生成临时AES-256-GCM加密密钥（用于前端加密传输）
+
     安全机制：
-    - 生成32字节随机密钥
+    - 生成32字节随机AES密钥
     - 生成唯一令牌（key_token）
     - 密钥10分钟后自动过期
-    
+
     Returns:
-        包含key_token和public_key的字典
+        包含key_token和public_key的字典（public_key为Base64编码的AES密钥）
     """
     secret_key = secrets.token_bytes(32)
     key_token = secrets.token_hex(16)
-    
+
     _api_key_secrets[key_token] = {
         'secret_key': secret_key,
         'created_at': datetime.datetime.now()
     }
-    
+
     cleanup_expired_secrets()
-    
+
     logger.info(f"生成临时加密密钥: token={key_token[:8]}...")
-    
+
     return {
         'key_token': key_token,
         'public_key': base64.b64encode(secret_key).decode('utf-8')

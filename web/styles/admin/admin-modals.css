@@ -1,0 +1,118 @@
+/* ========================================
+   Modal Styles - Admin Backend
+   Upload Modal and Admin-specific Modals
+   ======================================== */
+
+/* Note: Base modal styles (modal overlay, modal container, etc.)
+   are defined in styles/main.css. This file contains admin-specific modal extensions. */
+
+.modal-user,
+.modal-current {
+    font-weight: var(--md-sys-typescale-title-medium-weight);
+    color: var(--md-sys-color-on-surface);
+    margin-bottom: var(--md-sys-spacing-lg);
+    font-size: var(--md-sys-typescale-body-large-size);
+}
+
+/* ========================================
+   Upload Modal
+   ======================================== */
+.upload-modal .modal-description {
+    font-size: var(--md-sys-typescale-body-small-size);
+    color: var(--md-sys-color-on-surface-variant);
+    margin-bottom: var(--md-sys-spacing-lg);
+}
+
+.upload-drop-zone {
+    position: relative;
+    width: 100%;
+    box-sizing: border-box;
+    border: 2px dashed var(--md-sys-color-outline);
+    border-radius: var(--md-sys-shape-corner-medium);
+    padding: var(--md-sys-spacing-2xl);
+    text-align: center;
+    cursor: pointer;
+    transition: all var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+    margin-bottom: var(--md-sys-spacing-lg);
+    min-height: 180px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: var(--md-sys-spacing-md);
+}
+
+.upload-drop-zone > input[type="file"] {
+    position: absolute;
+    width: 0;
+    height: 0;
+    opacity: 0;
+}
+
+.upload-drop-zone:hover {
+    border-color: var(--md-sys-color-primary);
+    background-color: color-mix(in srgb, var(--md-sys-color-primary) 4%, transparent);
+}
+
+.upload-drop-zone.drag-over {
+    border-color: var(--md-sys-color-primary);
+    background-color: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent);
+    transform: scale(1.02);
+}
+
+.upload-drop-zone.uploading {
+    cursor: not-allowed;
+    opacity: 0.8;
+}
+
+.upload-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--md-sys-spacing-md);
+    width: 100%;
+}
+
+.upload-placeholder svg {
+    color: var(--md-sys-color-on-surface-variant);
+    opacity: 0.6;
+}
+
+.upload-placeholder p {
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: var(--md-sys-typescale-body-large-size);
+    margin: 0;
+}
+
+.selected-file {
+    display: flex;
+    align-items: center;
+    gap: var(--md-sys-spacing-sm);
+    font-weight: var(--md-sys-typescale-title-medium-weight);
+    color: var(--md-sys-color-primary);
+}
+
+.upload-progress-inline {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--md-sys-spacing-sm);
+}
+
+.progress-track-inline {
+    height: 12px;
+    background-color: var(--md-sys-color-surface-container-highest);
+    border-radius: var(--md-sys-shape-corner-full);
+    overflow: hidden;
+    margin-bottom: var(--md-sys-spacing-sm);
+}
+
+.progress-text {
+    display: block;
+    font-size: var(--md-sys-typescale-body-medium-size);
+    color: var(--md-sys-color-on-surface-variant);
+    font-weight: var(--md-sys-typescale-label-medium-weight);
+    text-align: center;
+}

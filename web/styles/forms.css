@@ -1,0 +1,135 @@
+/* ========================================
+   Form Elements
+   ======================================== */
+
+/* --- Text Fields (MD3 Filled) --- */
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="password"],
+select,
+textarea {
+    width: 100%;
+    padding: var(--md-sys-spacing-lg) var(--md-sys-spacing-lg);
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: var(--md-sys-shape-corner-extra-small);
+    background-color: var(--md-sys-color-surface-container-lowest);
+    color: var(--md-sys-color-on-surface);
+    font-size: var(--md-sys-typescale-body-large-size);
+    line-height: var(--md-sys-typescale-body-large-line-height);
+    font-family: inherit;
+    transition: all var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+input[type="text"]:hover,
+input[type="number"]:hover,
+select:hover,
+textarea:hover {
+    border-color: var(--md-sys-color-on-surface);
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+select:focus,
+textarea:focus {
+    border-color: var(--md-sys-color-primary);
+    box-shadow: 0 0 0 3px rgba(var(--md-sys-color-primary-rgb), 0.12);
+}
+
+input[type="text"]:disabled,
+input[type="number"]:disabled,
+select:disabled,
+textarea:disabled {
+    opacity: 0.38;
+    cursor: not-allowed;
+    border-color: var(--md-sys-color-outline-variant);
+}
+
+textarea {
+    resize: vertical;
+    min-height: 100px;
+    line-height: 1.6;
+}
+
+/* --- Number Input --- */
+input[type="number"] {
+    -moz-appearance: textfield;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+    opacity: 1;
+    height: 24px;
+}
+
+/* --- Checkbox --- */
+input[type="checkbox"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+    border: 2px solid var(--md-sys-color-outline);
+    border-radius: 2px;
+    background-color: transparent;
+    cursor: pointer;
+    position: relative;
+    transition: all var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+}
+
+input[type="checkbox"]:checked {
+    border-color: var(--md-sys-color-primary);
+    background-color: var(--md-sys-color-primary);
+}
+
+input[type="checkbox"]:checked::after {
+    content: '';
+    position: absolute;
+    width: 5px;
+    height: 9px;
+    border: solid var(--md-sys-color-on-primary);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg) translateY(-1px);
+    top: 2px;
+    left: 5px;
+}
+
+input[type="checkbox"]:hover:not(:disabled) {
+    border-color: var(--md-sys-color-on-surface);
+}
+
+input[type="checkbox"]:focus-visible {
+    outline: 2px solid var(--md-sys-color-primary);
+    outline-offset: 2px;
+}
+
+input[type="checkbox"]:disabled {
+    opacity: 0.38;
+    cursor: not-allowed;
+}
+
+/* --- Form Group --- */
+.form-group {
+    margin-bottom: var(--md-sys-spacing-xl);
+}
+
+.form-group label {
+    display: flex;
+    align-items: center;
+    gap: var(--md-sys-spacing-sm);
+    margin-bottom: var(--md-sys-spacing-sm);
+    font-weight: var(--md-sys-typescale-label-large-weight);
+    color: var(--md-sys-color-on-surface-variant);
+    cursor: pointer;
+}
+
+.form-group label input[type="checkbox"] {
+    flex-shrink: 0;
+}

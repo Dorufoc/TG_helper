@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用户注册 - TGHelper在线答题系统</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <script src="vue.global.js"></script>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: var(--md-sys-color-background, #f5f5f5);
+        }
+
+        .register-container {
+            width: 100%;
+            max-width: 420px;
+            padding: var(--md-sys-spacing-md, 16px);
+        }
+
+        .register-card {
+            background-color: var(--md-sys-color-surface-container-high, #ffffff);
+            border-radius: var(--md-sys-shape-corner-large, 16px);
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .register-header {
+            background: linear-gradient(135deg, var(--md-sys-color-primary-container, #d0bcff), var(--md-sys-color-secondary-container, #e8def8));
+            padding: var(--md-sys-spacing-2xl, 32px) var(--md-sys-spacing-xl, 24px);
+            text-align: center;
+        }
+
+        .register-header h1 {
+            margin: 0;
+            font-size: var(--md-sys-typescale-headline-medium-size, 24px);
+            font-weight: var(--md-sys-typescale-headline-medium-weight, 400);
+            color: var(--md-sys-color-on-primary-container, #1d192b);
+        }
+
+        .register-header p {
+            margin: var(--md-sys-spacing-sm, 8px) 0 0;
+            font-size: var(--md-sys-typescale-body-medium-size, 14px);
+            color: var(--md-sys-color-on-primary-container, #1d192b);
+            opacity: 0.8;
+        }
+
+        .register-form {
+            padding: var(--md-sys-spacing-xl, 24px);
+        }
+
+        .register-form h2 {
+            text-align: center;
+            margin-bottom: var(--md-sys-spacing-lg, 16px);
+            color: var(--md-sys-color-on-surface, #1c1b1f);
+            font-size: var(--md-sys-typescale-title-medium-size, 16px);
+            font-weight: var(--md-sys-typescale-title-medium-weight, 500);
+        }
+
+        .register-form .form-group {
+            margin-bottom: var(--md-sys-spacing-lg, 16px);
+        }
+
+        .register-form .form-group label {
+            display: block;
+            margin-bottom: var(--md-sys-spacing-sm, 8px);
+            font-weight: var(--md-sys-typescale-label-large-weight, 500);
+            color: var(--md-sys-color-on-surface-variant, #49454f);
+            font-size: var(--md-sys-typescale-label-large-size, 14px);
+        }
+
+        .register-form input[type="text"],
+        .register-form input[type="password"] {
+            width: 100%;
+            padding: var(--md-sys-spacing-md, 12px) var(--md-sys-spacing-lg, 16px);
+            border: 1px solid var(--md-sys-color-outline, #79747e);
+            border-radius: var(--md-sys-shape-corner-small, 8px);
+            background-color: var(--md-sys-color-surface-container-lowest, #ffffff);
+            color: var(--md-sys-color-on-surface, #1c1b1f);
+            font-size: var(--md-sys-typescale-body-large-size, 16px);
+            transition: all var(--md-sys-motion-duration-medium2, 250ms) var(--md-sys-motion-easing-standard, cubic-bezier(0.2, 0, 0, 1));
+            outline: none;
+            box-sizing: border-box;
+        }
+
+        .register-form input[type="text"]:focus,
+        .register-form input[type="password"]:focus {
+            border-color: var(--md-sys-color-primary, #6750a4);
+            box-shadow: 0 0 0 3px rgba(103, 80, 164, 0.12);
+        }
+
+        .captcha-input-group {
+            display: flex;
+            gap: var(--md-sys-spacing-md, 12px);
+            align-items: center;
+        }
+
+        .captcha-input-group input {
+            flex: 1;
+        }
+
+        .captcha-img {
+            height: 44px;
+            border-radius: var(--md-sys-shape-corner-small, 8px);
+            cursor: pointer;
+            border: 1px solid var(--md-sys-color-outline-variant, #cac4d0);
+            transition: transform var(--md-sys-motion-duration-short4, 200ms) var(--md-sys-motion-easing-standard, cubic-bezier(0.2, 0, 0, 1));
+        }
+
+        .captcha-img:hover {
+            transform: scale(1.05);
+        }
+
+.register-btn {
+            margin-top: var(--md-sys-spacing-md);
+        }
+
+        .register-btn:hover:not(:disabled) {
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+            filter: brightness(1.1);
+        }
+
+        .register-btn:hover:not(:disabled) {
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+            filter: brightness(1.1);
+        }
+
+        .register-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .login-link {
+            text-align: center;
+            margin-top: var(--md-sys-spacing-lg, 16px);
+            font-size: var(--md-sys-typescale-body-medium-size, 14px);
+            color: var(--md-sys-color-on-surface-variant, #49454f);
+        }
+
+        .login-link a {
+            color: var(--md-sys-color-primary, #6750a4);
+            text-decoration: none;
+            font-weight: var(--md-sys-typescale-label-large-weight, 500);
+            cursor: pointer;
+        }
+
+        .login-link a:hover {
+            text-decoration: underline;
+        }
+
+        .error-message {
+            color: var(--md-sys-color-error, #b3261e);
+            background-color: var(--md-sys-color-error-container, #f9dedc);
+            padding: var(--md-sys-spacing-md, 12px);
+            border-radius: var(--md-sys-shape-corner-small, 8px);
+            margin-top: var(--md-sys-spacing-md, 12px);
+            font-size: var(--md-sys-typescale-body-small-size, 12px);
+        }
+
+        .success-message {
+            color: var(--md-sys-color-on-success, #ffffff);
+            background-color: var(--md-sys-color-success, #386a20);
+            padding: var(--md-sys-spacing-md, 12px);
+            border-radius: var(--md-sys-shape-corner-small, 8px);
+            margin-top: var(--md-sys-spacing-md, 12px);
+            font-size: var(--md-sys-typescale-body-small-size, 12px);
+            text-align: center;
+        }
+
+        .back-home {
+            text-align: center;
+            margin-top: var(--md-sys-spacing-lg, 16px);
+        }
+
+        .back-home a {
+            color: var(--md-sys-color-primary, #6750a4);
+            text-decoration: none;
+            font-size: var(--md-sys-typescale-body-medium-size, 14px);
+            display: inline-flex;
+            align-items: center;
+            gap: var(--md-sys-spacing-xs, 4px);
+        }
+
+        .back-home a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="register-container">
+            <div class="register-card">
+                <div class="register-header">
+                    <h1>TGHelper在线答题系统</h1>
+                    <p>创建您的账号开始答题之旅</p>
+                </div>
+
+                <div class="register-form">
+                    <h2>用户注册</h2>
+
+                    <div class="form-group">
+                        <label for="username">用户名</label>
+                        <input 
+                            type="text" 
+                            id="username" 
+                            v-model="form.username" 
+                            placeholder="3-20位字母或数字"
+                            @keyup.enter="handleRegister"
+                            :disabled="loading"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password">密码</label>
+                        <input 
+                            type="password" 
+                            id="password" 
+                            v-model="form.password" 
+                            placeholder="至少6个字符"
+                            @keyup.enter="handleRegister"
+                            :disabled="loading"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="confirmPassword">确认密码</label>
+                        <input 
+                            type="password" 
+                            id="confirmPassword" 
+                            v-model="form.confirmPassword" 
+                            placeholder="再次输入密码"
+                            @keyup.enter="handleRegister"
+                            :disabled="loading"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                <label for="inviteCode">邀请码 <span style="color: #999; font-size: 12px; font-weight: normal;">(可选，使用邀请码可获得完整权限)</span></label>
+                <input 
+                    type="text" 
+                    id="inviteCode" 
+                    v-model="form.inviteCode" 
+                    placeholder="输入邀请码（选填）"
+                    @keyup.enter="handleRegister"
+                    :disabled="loading"
+                >
+            </div>
+
+                    <div class="form-group">
+                    <label for="captcha">验证码</label>
+                    <div class="captcha-input-group">
+                        <input 
+                            type="text" 
+                            id="captcha" 
+                            v-model="form.captcha" 
+                            placeholder="请输入验证码" 
+                            maxlength="4"
+                            @keyup.enter="handleRegister"
+                            :disabled="loading"
+                        >
+                        <img 
+                            :src="captchaUrl" 
+                            @click="refreshCaptcha" 
+                            class="captcha-img" 
+                            alt="验证码" 
+                            title="点击刷新"
+                        >
+                    </div>
+                </div>
+
+                    <button 
+                        @click="handleRegister" 
+                        class="btn btn-primary btn-block register-btn" 
+                        :disabled="loading || !canSubmit"
+                    >
+                        <span v-if="loading">注册中...</span>
+                        <span v-else>立即注册</span>
+                    </button>
+
+                    <div v-if="error" class="error-message">{{ error }}</div>
+                    <div v-if="success" class="success-message">{{ success }}</div>
+
+                    <div class="login-link">
+                        已有账号？
+                        <a @click="goToLogin">立即登录</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="back-home">
+                <a href="index.html">← 返回首页</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    form: {
+                        username: '',
+                        password: '',
+                        confirmPassword: '',
+                        captcha: '',
+                        inviteCode: ''
+                    },
+                    loading: false,
+                    error: '',
+                    success: '',
+                    captchaUrl: '/api/captcha?t=' + Date.now()
+                };
+            },
+            computed: {
+                canSubmit() {
+                    return this.form.username && 
+                           this.form.password && 
+                           this.form.confirmPassword && 
+                           this.form.captcha;
+                }
+            },
+            methods: {
+                refreshCaptcha() {
+                    this.captchaUrl = '/api/captcha?t=' + Date.now();
+                    this.form.captcha = '';
+                },
+
+                validateForm() {
+                    if (!this.form.username) {
+                        this.error = '请输入用户名';
+                        return false;
+                    }
+                    if (this.form.username.length < 3 || this.form.username.length > 20) {
+                        this.error = '用户名长度必须在3-20个字符之间';
+                        return false;
+                    }
+                    if (!/^[a-zA-Z0-9]+$/.test(this.form.username)) {
+                        this.error = '用户名只能包含字母和数字';
+                        return false;
+                    }
+                    if (!this.form.password) {
+                        this.error = '请输入密码';
+                        return false;
+                    }
+                    if (this.form.password.length < 6) {
+                        this.error = '密码长度不能少于6个字符';
+                        return false;
+                    }
+                    if (this.form.password !== this.form.confirmPassword) {
+                        this.error = '两次输入的密码不一致';
+                        return false;
+                    }
+                    if (!this.form.captcha) {
+                        this.error = '请输入验证码';
+                        return false;
+                    }
+                    return true;
+                },
+
+                async handleRegister() {
+                    this.error = '';
+                    this.success = '';
+
+                    if (!this.validateForm()) {
+                        return;
+                    }
+
+                    this.loading = true;
+                    try {
+                        const response = await fetch('/api/register', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            body: JSON.stringify({
+                                username: this.form.username,
+                                password: this.form.password,
+                                confirm_password: this.form.confirmPassword,
+                                invite_code: this.form.inviteCode,
+                                captcha: this.form.captcha
+                            })
+                        });
+
+                        const data = await response.json();
+                        if (data.success) {
+                            this.success = data.message || '注册成功！正在跳转到登录页面...';
+                            
+                            // 2秒后跳转到登录页面
+                            setTimeout(() => {
+                                window.location.href = 'index.html';
+                            }, 2000);
+                        } else {
+                            this.error = data.message;
+                            this.refreshCaptcha();
+                        }
+                    } catch (error) {
+                        this.error = '注册失败，请稍后重试';
+                        this.refreshCaptcha();
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                goToLogin() {
+                    window.location.href = 'index.html';
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>FTP 文件管理器 - TGHelper</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="styles/main.css">
     <style>
         .ftp-container {
             max-width: 1120px;
@@ -73,15 +73,9 @@
         .theme-toggle-btn {
             width: 40px;
             height: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: var(--md-sys-shape-corner-full);
+            padding: 0;
             background: transparent;
-            border: none;
             color: var(--md-sys-color-on-surface-variant);
-            cursor: pointer;
-            transition: all var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
         }
 
         .theme-toggle-btn:hover {
@@ -151,20 +145,11 @@
         }
 
         .breadcrumb-chip {
-            display: inline-flex;
-            align-items: center;
             gap: 6px;
             padding: 6px 14px;
-            border-radius: var(--md-sys-shape-corner-full);
-            font-size: var(--md-sys-typescale-label-large-size);
-            font-weight: var(--md-sys-typescale-label-large-weight);
             color: var(--md-sys-color-on-surface-variant);
             background: transparent;
-            border: none;
-            cursor: pointer;
-            transition: all var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
             white-space: nowrap;
-            font-family: inherit;
         }
 
         .breadcrumb-chip svg {
@@ -258,17 +243,11 @@
             transform: translateY(-50%);
             width: 32px;
             height: 32px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: var(--md-sys-shape-corner-full);
+            padding: 0;
             background: transparent;
-            border: none;
             color: var(--md-sys-color-on-surface-variant);
-            cursor: pointer;
             opacity: 0;
             pointer-events: none;
-            transition: all var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
         }
 
         .ftp-clear-btn.visible {
@@ -292,43 +271,11 @@
         }
 
         .ftp-search-btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
             padding: 0 24px;
             min-height: 48px;
-            border-radius: var(--md-sys-shape-corner-full);
             background: var(--md-sys-color-primary);
             color: var(--md-sys-color-on-primary);
-            border: none;
-            font-size: var(--md-sys-typescale-label-large-size);
-            font-weight: var(--md-sys-typescale-label-large-weight);
-            letter-spacing: 0.02em;
-            cursor: pointer;
-            transition: all var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
             white-space: nowrap;
-            font-family: inherit;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .ftp-search-btn::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background: currentColor;
-            opacity: 0;
-            transition: opacity var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
-            pointer-events: none;
-        }
-
-        .ftp-search-btn:hover:not(:disabled)::before {
-            opacity: var(--md-sys-state-hover-opacity);
-        }
-
-        .ftp-search-btn:active:not(:disabled)::before {
-            opacity: var(--md-sys-state-pressed-opacity);
         }
 
         .ftp-search-btn:hover:not(:disabled) {
@@ -338,12 +285,6 @@
 
         .ftp-search-btn:active:not(:disabled) {
             transform: translateY(0);
-        }
-
-        .ftp-search-btn:disabled {
-            opacity: 0.38;
-            cursor: not-allowed;
-            pointer-events: none;
         }
 
         .ftp-search-btn svg {
@@ -682,39 +623,9 @@
         }
 
         .ftp-action-btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
             gap: 6px;
             padding: 8px 16px;
-            border-radius: var(--md-sys-shape-corner-full);
-            font-size: var(--md-sys-typescale-label-large-size);
-            font-weight: var(--md-sys-typescale-label-large-weight);
-            border: none;
-            cursor: pointer;
-            transition: all var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
             white-space: nowrap;
-            font-family: inherit;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .ftp-action-btn::after {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background: currentColor;
-            opacity: 0;
-            transition: opacity var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
-            pointer-events: none;
-        }
-
-        .ftp-action-btn:hover::after {
-            opacity: var(--md-sys-state-hover-opacity);
-        }
-
-        .ftp-action-btn:active::after {
-            opacity: var(--md-sys-state-pressed-opacity);
         }
 
         .ftp-action-btn svg {
@@ -1058,7 +969,7 @@
                         </div>
                     </div>
                     <div class="ftp-header-actions">
-                        <button class="theme-toggle-btn" 
+                        <button class="btn theme-toggle-btn" 
                                 :class="{ 'dark-active': isDarkMode }"
                                 @click="toggleTheme" 
                                 :title="isDarkMode ? '切换到亮色模式' : '切换到暗色模式'">
@@ -1090,7 +1001,7 @@
                 <div class="ftp-toolbar">
                     <nav class="ftp-breadcrumb">
                         <template v-for="(crumb, index) in breadcrumbs" :key="index">
-                            <button class="breadcrumb-chip"
+                            <button class="btn breadcrumb-chip"
                                     :class="{ 'active': index === breadcrumbs.length - 1 }"
                                     @click="navigateTo(crumb.path)"
                                     :disabled="index === breadcrumbs.length - 1">
@@ -1114,7 +1025,7 @@
                                    placeholder="搜索文件名..."
                                    v-model="searchQuery"
                                    @keyup.enter="performSearch">
-                            <button class="ftp-clear-btn" 
+                            <button class="btn ftp-clear-btn" 
                                     :class="{ 'visible': searchQuery.trim() }"
                                     @click="clearSearch"
                                     title="清除搜索">
@@ -1124,7 +1035,7 @@
                                 </svg>
                             </button>
                         </div>
-                        <button class="ftp-search-btn" @click="performSearch" :disabled="!searchQuery.trim() || loading">
+                        <button class="btn ftp-search-btn" @click="performSearch" :disabled="!searchQuery.trim() || loading">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <circle cx="11" cy="11" r="8"/>
                                 <line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -1278,7 +1189,7 @@
                             <div class="ftp-file-date">{{ file.modified }}</div>
                             <div class="ftp-file-actions">
                                 <template v-if="file.type === 'file'">
-                                    <button class="ftp-action-btn download" @click.stop="downloadFile(file)">
+                                    <button class="btn ftp-action-btn download" @click.stop="downloadFile(file)">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                                             <polyline points="7 10 12 15 17 10"/>
@@ -1319,7 +1230,7 @@
                         </svg>
                         <span>{{ previewModal.title }}</span>
                     </div>
-                    <button class="close-btn" @click="closePreview">×</button>
+                    <button class="btn close-btn" @click="closePreview">×</button>
                 </div>
                 <div class="ftp-modal-body">
                     <div v-if="previewModal.loading" class="ftp-loading">

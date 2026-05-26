@@ -1,0 +1,183 @@
+/* ========================================
+   Shared Components - Transitions, Utilities
+   Button variants are in buttons.css
+   ======================================== */
+
+/* ========================================
+   Loading Spinners
+   ======================================== */
+.loading-spinner,
+.loading-spinner-small {
+    display: flex;
+    align-items: center;
+    gap: var(--md-sys-spacing-sm);
+}
+
+/* ========================================
+   Vue Transitions
+   ======================================== */
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+    transition: opacity var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+}
+
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+    opacity: 0;
+}
+
+.expand-enter-active,
+.expand-leave-active {
+    transition: all var(--md-sys-motion-duration-medium3) var(--md-sys-motion-easing-standard);
+    overflow: hidden;
+}
+
+.expand-enter-from,
+.expand-leave-to {
+    opacity: 0;
+    max-height: 0;
+    margin-top: 0;
+}
+
+.expand-enter-to,
+.expand-leave-from {
+    opacity: 1;
+    max-height: 1000px;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+    transition: all var(--md-sys-motion-duration-medium3) var(--md-sys-motion-easing-emphasized-decelerate);
+}
+
+.fade-enter-from {
+    opacity: 0;
+    transform: translateY(-8px);
+    max-height: 0;
+    overflow: hidden;
+}
+
+.fade-enter-to {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 1000px;
+    overflow: visible;
+}
+
+.fade-leave-from {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 1000px;
+    overflow: visible;
+}
+
+.fade-leave-to {
+    opacity: 0;
+    transform: translateY(-8px);
+    max-height: 0;
+    overflow: hidden;
+}
+
+.card-list-enter-active,
+.card-list-leave-active {
+    transition: all var(--md-sys-motion-duration-medium3) var(--md-sys-motion-easing-standard);
+}
+
+.card-list-enter-from,
+.card-list-leave-to {
+    opacity: 0;
+    transform: translateY(16px);
+}
+
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+    transition: opacity var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+    opacity: 0;
+}
+
+/* ========================================
+   Animation Keyframes
+   ======================================== */
+@keyframes md3-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes md3-fade-in-up {
+    from {
+        opacity: 0;
+        transform: translateY(16px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes md3-scale-in {
+    from {
+        opacity: 0;
+        transform: scale(0.92) translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+@keyframes md3-shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+@keyframes md3-pulse {
+    0% { transform: scale(0.8); opacity: 0; }
+    50% { transform: scale(1.08); }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes md3-snackbar-in {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(40px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0) scale(1);
+    }
+}
+
+/* ========================================
+   Utility Classes
+   ======================================== */
+.text-center { text-align: center; }
+.text-left { text-align: left; }
+.text-right { text-align: right; }
+
+.mt-sm { margin-top: var(--md-sys-spacing-sm); }
+.mt-md { margin-top: var(--md-sys-spacing-md); }
+.mt-lg { margin-top: var(--md-sys-spacing-lg); }
+.mt-xl { margin-top: var(--md-sys-spacing-xl); }
+
+.mb-sm { margin-bottom: var(--md-sys-spacing-sm); }
+.mb-md { margin-bottom: var(--md-sys-spacing-md); }
+.mb-lg { margin-bottom: var(--md-sys-spacing-lg); }
+.mb-xl { margin-bottom: var(--md-sys-spacing-xl); }
+
+.gap-sm { gap: var(--md-sys-spacing-sm); }
+.gap-md { gap: var(--md-sys-spacing-md); }
+.gap-lg { gap: var(--md-sys-spacing-lg); }
+
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
+.flex-wrap { flex-wrap: wrap; }
+.flex-1 { flex: 1; }
+
+.hidden { display: none; }

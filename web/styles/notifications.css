@@ -1,0 +1,49 @@
+/* ========================================
+   Notification Toast - MD3 Snackbar
+   ======================================== */
+.notification {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: var(--md-sys-spacing-lg) var(--md-sys-spacing-xl);
+    border-radius: var(--md-sys-shape-corner-medium);
+    color: var(--md-sys-color-inverse-on-surface);
+    font-size: var(--md-sys-typescale-body-medium-size);
+    font-weight: var(--md-sys-typescale-label-large-weight);
+    z-index: 3000;
+    animation: md3-snackbar-in 0.3s var(--md-sys-motion-easing-emphasized-decelerate);
+    max-width: 90%;
+    min-width: 288px;
+    text-align: center;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+@keyframes md3-snackbar-in {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(40px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0) scale(1);
+    }
+}
+
+.notification.success {
+    background-color: var(--md-sys-color-success);
+}
+
+.notification.error {
+    background-color: var(--md-sys-color-error);
+}
+
+.notification.info {
+    background-color: var(--md-sys-color-primary);
+}
+
+.notification.warning {
+    background-color: var(--md-sys-color-tertiary);
+    color: var(--md-sys-color-on-tertiary);
+}

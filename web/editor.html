@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#EADDFF">
+    <title>题库编辑 - 管理员后台</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="styles/editor.css">
+    <script src="vue.global.js"></script>
+    <script>
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark-mode');
+            document.addEventListener('DOMContentLoaded', () => {
+                document.body.classList.add('dark-mode');
+            });
+        }
+    </script>
+</head>
+<body>
+    <div id="app">
+        <div v-if="notification" :class="['notification', notification.type]" role="alert" aria-live="polite">
+            {{ notification.message }}
+        </div>
+
+        <transition name="modal-fade">
+            <div v-if="confirmModal.show" class="modal" @click="confirmModal.onConfirm(false)">
+                <div class="modal-content" @click.stop>
+                    <h3>{{ confirmModal.title }}</h3>
+                    <p>{{ confirmModal.message }}</p>
+                    <div class="modal-buttons">
+                        <button @click="confirmModal.onConfirm(false)" class="btn btn-secondary">取消</button>
+                        <button @click="confirmModal.onConfirm(true)" class="btn btn-primary">确认</button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+        <div v-if="!isLoggedIn" class="editor-login-hint">
+            <p>请先登录管理员账号</p>
+            <a href="/admin" class="btn btn-filled">前往登录</a>
+        </div>
+
+        <div v-else-if="loading" class="editor-loading">
+            <div class="loading-spinner-large">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10" stroke-dasharray="60" stroke-dashoffset="15">
+                        <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite"/>
+                    </circle>
+                </svg>
+            </div>
+            <p>加载题库中...</p>
+        </div>
+
+        <div v-else class="editor-page">
+            <div class="editor-top-bar">
+                <div class="editor-header">
+                    <a href="/admin" class="btn btn-tonal btn-back">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="15 18 9 12 15 6"/>
+                        </svg>
+                        返回管理后台
+                    </a>
+                    <div class="editor-title-section">
+                        <h2>{{ editor.filename || '题库编辑' }}</h2>
+                        <div class="editor-stats">
+                            <span class="chip primary">共 {{ editor.questions.length }} 题</span>
+                            <span v-for="(count, type) in editor.stats" :key="type" class="chip">{{ type }}: {{ count }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="editor-question-list">
+                <transition-group name="editor-card">
+                    <question-editor
+                        v-for="(q, idx) in editor.questions"
+                        :key="'qe-' + idx"
+                        :question="q"
+                        :question-index="idx"
+                        :ai-loading="editor.aiLoading && editor.aiLoadingIndex === idx"
+                        @update="onQuestionUpdate(idx, $event)"
+                        @ai-start="onAiStart(idx)"
+                        @ai-done="onAiDone(idx)"
+                        @ai-error="onAiError($event)"
+                        @notify="(type, message) => showNotification(message, type)"
+                    />
+                </transition-group>
+            </div>
+
+            <div class="editor-bottom-bar">
+                <div class="editor-bottom-actions">
+                    <button @click="editorUndo" class="btn btn-tonal" :disabled="editor.undoStack.length === 0">
+                        <span class="editor-action-content">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="1 4 1 10 7 10"/>
+                                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                            </svg>
+                            <span>撤销</span>
+                        </span>
+                    </button>
+                    <button @click="editorRedo" class="btn btn-tonal" :disabled="editor.redoStack.length === 0">
+                        <span class="editor-action-content">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="23 4 23 10 17 10"/>
+                                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                            </svg>
+                            <span>重做</span>
+                        </span>
+                    </button>
+                    <button @click="saveQuestionBank" class="btn btn-filled" :disabled="editor.saving">
+                        <span v-if="!editor.saving" class="editor-action-content">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                                <polyline points="17 21 17 13 7 13 7 21"/>
+                                <polyline points="7 3 7 8 15 8"/>
+                            </svg>
+                            <span>保存</span>
+                        </span>
+                        <span v-else class="editor-action-content loading-spinner-small">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10" stroke-dasharray="60" stroke-dashoffset="15">
+                                    <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite"/>
+                                </circle>
+                            </svg>
+                            <span>保存中...</span>
+                        </span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="api_encryption.js"></script>
+    <script src="utils/auth_manager.js"></script>
+    <script src="components/editor/QuestionEditor.js"></script>
+    <script src="editor.js"></script>
+</body>
+</html>

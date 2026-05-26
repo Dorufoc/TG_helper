@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>系统维护中</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="styles/main.css">
 </head>
 <body>
     <div class="maintenance-modal">
@@ -20,7 +20,7 @@
             <p>服务器正在维护中，请稍后重试。或联系管理员</p>
             <p class="maintenance-hint">err:404notfind</p>
             <div class="game-redirect-btn">
-                <button onclick="window.location.href='/game'">试试小游戏休闲一下</button>
+                <button onclick="window.location.href='/game'" class="btn btn-primary btn-block">试试小游戏休闲一下</button>
             </div>
         </div>
     </div>
@@ -122,34 +122,78 @@
             });
         }
 
-        async function collectAndSend() {
-            const ua = navigator.userAgent;
-            const [publicIP, localIP] = await Promise.all([getPublicIP(), getLocalIP()]);
-            const info = {
-                platform: parseOS(ua),
-                browser: parseBrowser(ua),
-                screen: `${screen.width}x${screen.height} (${window.devicePixelRatio}x)`,
-                language: navigator.language,
-                deviceType: getDeviceType(ua),
-                cpuCores: navigator.hardwareConcurrency || 'N/A',
-                memory: navigator.deviceMemory ? navigator.deviceMemory + 'GB' : 'N/A',
-                networkType: getNetworkInfo(),
-                battery: await getBatteryInfo(),
-                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                touchEnabled: navigator.maxTouchPoints > 0 ? `是(${navigator.maxTouchPoints}点)` : '否',
-                publicIP: publicIP,
-                localIP: localIP
-            };
+        let isPageUnloading = false;
 
-            fetch('/api/device_info', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(info),
-                keepalive: true
-            }).catch(() => {});
+        // 监听页面卸载，避免请求中止错误
+        window.addEventListener('beforeunload', () => {
+            isPageUnloading = true;
+        });
+
+        async function collectAndSend() {
+            // 如果页面正在卸载，跳过数据收集
+            if (isPageUnloading) return;
+
+            try {
+                const ua = navigator.userAgent;
+
+                // 使用 AbortController 支持请求取消
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+                const [publicIP, localIP] = await Promise.all([
+                    getPublicIP(),
+                    getLocalIP()
+                ]);
+
+                clearTimeout(timeoutId);
+
+                // 再次检查页面状态
+                if (isPageUnloading) return;
+
+                const info = {
+                    platform: parseOS(ua),
+                    browser: parseBrowser(ua),
+                    screen: `${screen.width}x${screen.height} (${window.devicePixelRatio}x)`,
+                    language: navigator.language,
+                    deviceType: getDeviceType(ua),
+                    cpuCores: navigator.hardwareConcurrency || 'N/A',
+                    memory: navigator.deviceMemory ? navigator.deviceMemory + 'GB' : 'N/A',
+                    networkType: getNetworkInfo(),
+                    battery: await getBatteryInfo(),
+                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                    touchEnabled: navigator.maxTouchPoints > 0 ? `是(${navigator.maxTouchPoints}点)` : '否',
+                    publicIP: publicIP,
+                    localIP: localIP
+                };
+
+                // 使用 sendBeacon 作为首选方案，它在页面卸载时更可靠
+                if (navigator.sendBeacon && !isPageUnloading) {
+                    const blob = new Blob([JSON.stringify(info)], { type: 'application/json' });
+                    navigator.sendBeacon('/api/device_info', blob);
+                    return;
+                }
+
+                // 回退到 fetch，但添加信号支持取消
+                if (!isPageUnloading) {
+                    fetch('/api/device_info', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+                        body: JSON.stringify(info),
+                        signal: controller.signal,
+                        keepalive: true
+                    }).catch(() => {});
+                }
+            } catch (error) {
+                // 静默处理所有错误，避免在错误页面上显示更多错误
+            }
         }
 
-        collectAndSend();
+        // 延迟执行，避免页面快速跳转时的请求
+        if (document.readyState === 'complete') {
+            setTimeout(collectAndSend, 100);
+        } else {
+            window.addEventListener('load', () => setTimeout(collectAndSend, 100));
+        }
     })();
     </script>
 </body>

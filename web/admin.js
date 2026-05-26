@@ -1,17 +1,39 @@
 const { createApp } = Vue;
 
+function _getCookie(name) {
+    const match = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()\[\]\\\/+^])/g, '\\$1') + '=([^;]*)'));
+    return match ? decodeURIComponent(match[1]) : null;
+}
+
+function _setCookie(name, value, maxAgeDays) {
+    let cookie = name + '=' + encodeURIComponent(value) + '; path=/; SameSite=Lax';
+    if (location.protocol === 'https:') {
+        cookie += '; Secure';
+    }
+    if (maxAgeDays) {
+        cookie += '; max-age=' + (maxAgeDays * 86400);
+    }
+    document.cookie = cookie;
+}
+
 function generateDeviceId() {
-    /* 生成设备随机ID，存储在localStorage中以便持久化 */
-    let deviceId = localStorage.getItem('deviceId');
+    let deviceId = _getCookie('deviceId');
     if (!deviceId) {
-        deviceId = 'dev-' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
-        localStorage.setItem('deviceId', deviceId);
+        deviceId = localStorage.getItem('deviceId');
+        if (deviceId) {
+            _setCookie('deviceId', deviceId, 365);
+            localStorage.removeItem('deviceId');
+        } else {
+            deviceId = 'dev-' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+            _setCookie('deviceId', deviceId, 365);
+        }
     }
     return deviceId;
 }
 
 const DEVICE_ID = generateDeviceId();
 let CURRENT_USERNAME = null;
+let authManager = null;
 
 function setLoggedInUsername(username) {
     CURRENT_USERNAME = username;
@@ -25,7 +47,8 @@ function getAuthHeaders() {
         userIdentity = `unknown-${DEVICE_ID}`;
     }
     return {
-        'X-User-Identity': userIdentity
+        'X-User-Identity': userIdentity,
+        'X-Requested-With': 'XMLHttpRequest'
     };
 }
 
@@ -59,21 +82,12 @@ const DEFAULT_SETTINGS = {
             api_key: '',
             model_id: 'claude-3-5-sonnet-latest',
             max_tokens: 4096
-        },
-        deepseek: {
-            base_url: 'https://api.deepseek.com',
-            api_format: 'openai',
-            api_key: '',
-            model_id: 'deepseek-v4-pro',
-            thinking: 'enabled',
-            reasoning_effort: 'high',
-            max_tokens: 4096
         }
     },
     ai_agents: {
         question_analysis: {
             name: '题目解析 Agent',
-            provider: 'deepseek',
+            provider: 'openai',
             model_id: '',
             temperature: 0.7,
             max_tokens: 500,
@@ -90,10 +104,6 @@ const AI_PROVIDER_META = {
     anthropic: {
         label: 'Anthropic',
         description: '适合长上下文与稳健生成'
-    },
-    deepseek: {
-        label: 'DeepSeek',
-        description: '适合高性价比解析与推理'
     }
 };
 
@@ -130,6 +140,9 @@ function normalizeSettings(rawSettings) {
 }
 
 createApp({
+    components: {
+        Md3Select: window.Md3Select
+    },
     data() {
         return {
             isLoggedIn: false,
@@ -161,21 +174,6 @@ createApp({
                 newPassword: '',
                 confirmPassword: ''
             },
-            deepseek: {
-                apiKey: '',
-                files: [],
-                selectedFile: '',
-                stats: null,
-                isRunning: false,
-                status: 'idle',
-                statusText: '就绪',
-                total: 0,
-                processed: 0,
-                logs: [],
-                statusCheckInterval: null,
-                encryptionKey: null,
-                keyToken: ''
-            },
             questionBankList: [],
             showUploadModal: false,
             showRenameModalFlag: false,
@@ -206,15 +204,18 @@ createApp({
         guestUsers() {
             return this.users.filter(u => u.role === 'guest').length;
         },
-        deepseekProgressPercent() {
-            if (this.deepseek.total === 0) return 0;
-            return Math.floor((this.deepseek.processed / this.deepseek.total) * 100);
-        },
         analysisAgent() {
             return this.settings.ai_agents.question_analysis;
         },
         analysisProviderMeta() {
-            return AI_PROVIDER_META[this.analysisAgent.provider] || AI_PROVIDER_META.deepseek;
+            return AI_PROVIDER_META[this.analysisAgent.provider] || AI_PROVIDER_META.openai;
+        },
+        getThumbPosition() {
+            const positions = {
+                'openai': '4px',
+                'anthropic': '50%'
+            };
+            return positions[this.activeAiProvider] || positions.openai;
         }
     },
     async created() {
@@ -231,9 +232,14 @@ createApp({
         });
         await this.checkLoginStatus();
         if (this.isAdmin) {
-            await this.loadDeepseekFiles();
             await this.loadQuestionBankList();
             await this.loadSettings();
+        }
+    },
+    beforeUnmount() {
+        if (authManager) {
+            authManager.disconnect();
+            authManager = null;
         }
     },
     methods: {
@@ -244,17 +250,38 @@ createApp({
             }
             return password.substring(0, 8) + '...' + password.substring(password.length - 4);
         },
+        formatLastLogin(lastLogin) {
+            /* 格式化上次登录时间显示 */
+            if (!lastLogin || lastLogin === '从未登录') {
+                return '从未登录';
+            }
+            try {
+                const date = new Date(lastLogin);
+                if (isNaN(date.getTime())) {
+                    return lastLogin;
+                }
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                const hours = String(date.getHours()).padStart(2, '0');
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+                return `${year}-${month}-${day} ${hours}:${minutes}`;
+            } catch (e) {
+                return lastLogin;
+            }
+        },
         toggleDrawer() {
             this.drawerOpen = !this.drawerOpen;
         },
         switchTab(tab) {
             this.activeTab = tab;
-            this.drawerOpen = false;
+            if (this.isMobile) {
+                this.drawerOpen = false;
+            }
         },
         getTabTitle() {
             const titles = {
                 users: '用户管理',
-                deepseek: 'AI解析',
                 question_bank: '题库管理',
                 settings: '系统设置'
             };
@@ -263,7 +290,6 @@ createApp({
         getTabSubtitle() {
             const subtitles = {
                 users: '管理系统用户、角色和权限',
-                deepseek: '使用可配置 AI Agent 为题库生成详细解析',
                 question_bank: '上传、管理和维护题库文件',
                 settings: '配置账号系统、AI 服务商与内部 Agent'
             };
@@ -291,6 +317,7 @@ createApp({
                     this.username = data.username;
                     this.isAdmin = data.role === 'admin';
                     setLoggedInUsername(data.username);
+                    this.startAuthManager();
                     if (this.isAdmin) {
                         await this.loadUsers();
                     }
@@ -298,6 +325,36 @@ createApp({
             } catch (error) {
                 console.error('检查登录状态失败:', error);
             }
+        },
+        startAuthManager() {
+            if (authManager) {
+                authManager.disconnect();
+            }
+            authManager = new AuthManager({
+                onSessionInvalidated: (data) => {
+                    console.warn('会话已失效:', data.reason);
+                    this.forceLogout();
+                },
+                onConnected: () => {
+                    console.log('实时认证连接已建立');
+                },
+                onDisconnected: () => {
+                    console.log('实时认证连接已断开');
+                }
+            });
+            authManager.connect();
+        },
+        forceLogout() {
+            if (authManager) {
+                authManager.disconnect();
+                authManager = null;
+            }
+            this.isLoggedIn = false;
+            this.isAdmin = false;
+            this.username = '';
+            setLoggedInUsername(null);
+            this.users = [];
+            this.showNotification('会话已失效，请重新登录', 'error');
         },
         refreshCaptcha() {
             this.captchaUrl = '/api/captcha?t=' + Date.now();
@@ -325,6 +382,7 @@ createApp({
                     this.username = data.username;
                     this.isAdmin = data.role === 'admin';
                     setLoggedInUsername(data.username);
+                    this.startAuthManager();
                     if (this.isAdmin) {
                         await this.loadUsers();
                     }
@@ -344,11 +402,7 @@ createApp({
             } catch (error) {
                 console.error('登出失败:', error);
             }
-            this.isLoggedIn = false;
-            this.isAdmin = false;
-            this.username = '';
-            setLoggedInUsername(null);
-            this.users = [];
+            this.forceLogout();
             this.loginForm = { username: '', password: '', captcha: '' };
             this.loginError = '';
             this.refreshCaptcha();
@@ -365,178 +419,6 @@ createApp({
                 }
             } catch (error) {
                 this.showNotification('加载用户列表失败', 'error');
-            }
-        },
-        async loadDeepseekFiles() {
-            try {
-                const response = await apiFetch('/api/admin/deepseek/files');
-                const data = await response.json();
-                if (data.success) {
-                    this.deepseek.files = data.files;
-                }
-            } catch (error) {
-                console.error('加载题库文件列表失败:', error);
-                this.showNotification('加载题库文件列表失败', 'error');
-            }
-        },
-        async loadFileStats() {
-            if (!this.deepseek.selectedFile) {
-                this.deepseek.stats = null;
-                return;
-            }
-            try {
-                const response = await apiFetch('/api/admin/deepseek/stats', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ file_path: this.deepseek.selectedFile })
-                });
-                const data = await response.json();
-                if (data.success) {
-                    this.deepseek.stats = {
-                        total: data.total,
-                        with_analysis: data.with_analysis,
-                        without_analysis: data.without_analysis,
-                        stats: data.stats
-                    };
-                    this.showNotification(`题库加载成功，共 ${data.total} 道题目`, 'info');
-                } else {
-                    this.deepseek.stats = null;
-                    this.showNotification(data.message, 'error');
-                }
-            } catch (error) {
-                console.error('加载题库统计失败:', error);
-                this.showNotification('加载题库统计失败', 'error');
-            }
-        },
-        async loadEncryptionKey() {
-            try {
-                const response = await apiFetch('/api/admin/deepseek/encryption_key');
-                const data = await response.json();
-                if (data.success) {
-                    this.deepseek.encryptionKey = data.public_key;
-                    this.deepseek.keyToken = data.key_token;
-                } else {
-                    this.showNotification('获取加密密钥失败', 'error');
-                }
-            } catch (error) {
-                console.error('获取加密密钥失败:', error);
-                this.showNotification('获取加密密钥失败', 'error');
-            }
-        },
-        async startParsing() {
-            if (!this.deepseek.selectedFile) {
-                this.showNotification('请选择题库文件', 'error');
-                return;
-            }
-
-            try {
-                let encryptedApiKey = '';
-
-                if (this.deepseek.apiKey) {
-                    await this.loadEncryptionKey();
-                    
-                    if (!this.deepseek.encryptionKey || !this.deepseek.keyToken) {
-                        this.showNotification('加密密钥加载失败', 'error');
-                        return;
-                    }
-
-                    encryptedApiKey = ApiEncryption.encryptApiKey(
-                        this.deepseek.apiKey, 
-                        this.deepseek.encryptionKey
-                    );
-
-                    this.deepseek.apiKey = '';
-                }
-                
-                const response = await apiFetch('/api/admin/deepseek/parse', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        encrypted_api_key: encryptedApiKey,
-                        key_token: this.deepseek.keyToken,
-                        file_path: this.deepseek.selectedFile
-                    })
-                });
-                const data = await response.json();
-                if (data.success) {
-                    this.deepseek.isRunning = true;
-                    this.deepseek.status = 'running';
-                    this.deepseek.statusText = '解析中...';
-                    this.deepseek.logs = [];
-                    this.startStatusCheck();
-                    this.showNotification('解析任务已启动', 'success');
-                } else {
-                    this.showNotification(data.message, 'error');
-                }
-            } catch (error) {
-                console.error('启动解析任务失败:', error);
-                this.showNotification('启动解析任务失败', 'error');
-            }
-        },
-        async stopParsing() {
-            try {
-                const response = await apiFetch('/api/admin/deepseek/stop', {
-                    method: 'POST'
-                });
-                const data = await response.json();
-                if (data.success) {
-                    this.deepseek.statusText = '正在停止...';
-                    this.showNotification('停止命令已发送', 'info');
-                } else {
-                    this.showNotification(data.message, 'error');
-                }
-            } catch (error) {
-                console.error('停止解析任务失败:', error);
-                this.showNotification('停止解析任务失败', 'error');
-            }
-        },
-        startStatusCheck() {
-            if (this.deepseek.statusCheckInterval) {
-                clearInterval(this.deepseek.statusCheckInterval);
-            }
-            this.deepseek.statusCheckInterval = setInterval(async () => {
-                await this.checkParsingStatus();
-            }, 1000);
-        },
-        async checkParsingStatus() {
-            try {
-                const response = await apiFetch('/api/admin/deepseek/status');
-                const data = await response.json();
-                if (data.success) {
-                    this.deepseek.isRunning = data.running;
-                    this.deepseek.status = data.status;
-                    this.deepseek.total = data.total;
-                    this.deepseek.processed = data.processed;
-
-                    if (data.status === 'completed') {
-                        this.deepseek.statusText = data.message || '解析完成';
-                    } else if (data.status === 'stopped') {
-                        this.deepseek.statusText = data.message || '解析已停止';
-                    } else if (data.status === 'error') {
-                        this.deepseek.statusText = data.message || '解析出错';
-                    } else if (data.running) {
-                        this.deepseek.statusText = `解析中... ${data.processed}/${data.total}`;
-                    } else {
-                        this.deepseek.statusText = '就绪';
-                    }
-
-                    if (data.logs && data.logs.length > 0) {
-                        this.deepseek.logs = data.logs.map(log => ({
-                            time: new Date().toLocaleTimeString(),
-                            message: log
-                        }));
-                    }
-
-                    if (!data.running && this.deepseek.statusCheckInterval) {
-                        clearInterval(this.deepseek.statusCheckInterval);
-                        this.deepseek.statusCheckInterval = null;
-                        if (data.status === 'completed') {
-                            this.showNotification(data.message || '解析完成', 'success');
-                        }
-                    }
-                }
-            } catch (error) {
-                console.error('检查解析状态失败:', error);
             }
         },
         async updateRole(user) {
@@ -836,6 +718,7 @@ createApp({
 
                 xhr.open('POST', '/api/admin/question_bank/upload');
                 xhr.setRequestHeader('X-User-Identity', CURRENT_USERNAME || 'unknown');
+                xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
                 xhr.send(formData);
 
                 this.uploadProgress = 99;
@@ -950,6 +833,10 @@ createApp({
             } finally {
                 this.savingSettings = false;
             }
-        }
+        },
+        async openQuestionBankEditor(file) {
+            window.location.href = `/editor?filename=${encodeURIComponent(file.filename)}`;
+        },
+
     }
 }).mount('#app');

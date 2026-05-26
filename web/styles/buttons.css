@@ -1,0 +1,189 @@
+/* ========================================
+   Button System - MD3 Complete
+   All buttons MUST use .btn as base class.
+   Color variants, size variants, layout variants only.
+   ======================================== */
+.btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--md-sys-spacing-sm);
+    padding: 10px 24px;
+    min-height: 40px;
+    border: none;
+    border-radius: var(--md-sys-shape-corner-full);
+    font-size: var(--md-sys-typescale-label-large-size);
+    font-weight: var(--md-sys-typescale-label-large-weight);
+    line-height: var(--md-sys-typescale-label-large-line-height);
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    overflow: hidden;
+    transition: all var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* State Layer */
+.btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: currentColor;
+    opacity: 0;
+    transition: opacity var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
+    pointer-events: none;
+}
+
+.btn:hover::before {
+    opacity: var(--md-sys-state-hover-opacity);
+}
+
+.btn:focus-visible::before {
+    opacity: var(--md-sys-state-focus-opacity);
+}
+
+.btn:active::before {
+    opacity: var(--md-sys-state-pressed-opacity);
+}
+
+.btn:focus-visible {
+    outline: 2px solid var(--md-sys-color-primary);
+    outline-offset: 2px;
+}
+
+.btn:disabled {
+    opacity: 0.38;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* --- Filled Button (Primary) --- */
+.btn-primary,
+.btn-filled {
+    background-color: var(--md-sys-color-primary);
+    color: var(--md-sys-color-on-primary);
+}
+
+/* --- Tonal Button (Secondary) --- */
+.btn-secondary,
+.btn-tonal {
+    background-color: var(--md-sys-color-secondary-container);
+    color: var(--md-sys-color-on-secondary-container);
+}
+
+/* --- Elevated Button --- */
+.btn-elevated {
+    background-color: var(--md-sys-color-surface-container-low);
+    color: var(--md-sys-color-primary);
+}
+
+/* --- Outlined Button --- */
+.btn-outlined {
+    background-color: transparent;
+    color: var(--md-sys-color-primary);
+    border: 1px solid var(--md-sys-color-outline);
+}
+
+.btn-outlined:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent);
+}
+
+/* --- Text Button --- */
+.btn-text {
+    background-color: transparent;
+    color: var(--md-sys-color-primary);
+}
+
+.btn-text:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent);
+}
+
+/* --- Error/Danger Button --- */
+.btn-danger {
+    background-color: var(--md-sys-color-error-container);
+    color: var(--md-sys-color-on-error-container);
+}
+
+.btn-danger:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--md-sys-color-error) 12%, var(--md-sys-color-error-container));
+}
+
+/* --- Success Button --- */
+.btn-success {
+    background-color: var(--md-sys-color-success-container);
+    color: var(--md-sys-color-on-success-container);
+}
+
+.btn-success:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--md-sys-color-success) 12%, var(--md-sys-color-success-container));
+}
+
+/* Legacy alias: btn-info -> outlined */
+.btn-info {
+    background-color: transparent;
+    color: var(--md-sys-color-primary);
+    border: 1px solid var(--md-sys-color-outline);
+}
+
+.btn-info:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent);
+}
+
+/* --- Small Button --- */
+.btn-small {
+    padding: 6px 16px;
+    min-height: 32px;
+    font-size: var(--md-sys-typescale-label-medium-size);
+}
+
+/* --- Icon Button (icon only, square) --- */
+.btn-icon {
+    flex: 0 0 auto;
+    width: 40px;
+    min-width: 40px;
+    max-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    aspect-ratio: 1 / 1;
+    padding: 0;
+    border-radius: var(--md-sys-shape-corner-full);
+    background-color: transparent;
+    color: var(--md-sys-color-on-surface-variant);
+}
+
+/* Icon button uses ::before state layer for hover effect */
+.btn-icon::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: currentColor;
+    opacity: 0;
+    transition: opacity var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
+    pointer-events: none;
+    border-radius: var(--md-sys-shape-corner-full);
+}
+
+.btn-icon:hover:not(:disabled)::before {
+    opacity: var(--md-sys-state-hover-opacity);
+}
+
+.btn-icon:focus-visible::before {
+    opacity: var(--md-sys-state-focus-opacity);
+}
+
+.btn-icon:active:not(:disabled)::before {
+    opacity: var(--md-sys-state-pressed-opacity);
+}
+
+/* --- Block Button (full width) --- */
+.btn-block {
+    width: 100%;
+}
+
+/* --- Flex Button --- */
+.btn-flex {
+    flex: 1;
+}

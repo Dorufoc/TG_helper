@@ -1,0 +1,124 @@
+/* ========================================
+   Answer Sheet Modal
+   ======================================== */
+.answer-sheet-modal {
+    width: 90%;
+    max-width: 600px;
+    height: 80%;
+    max-height: 700px;
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--md-sys-spacing-xl);
+    padding-bottom: var(--md-sys-spacing-lg);
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: var(--md-sys-typescale-title-large-size);
+    font-weight: var(--md-sys-typescale-title-large-weight);
+    color: var(--md-sys-color-on-surface);
+}
+
+.answer-sheet-content {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: var(--md-sys-spacing-sm);
+}
+
+.question-group {
+    margin-bottom: var(--md-sys-spacing-xl);
+}
+
+.group-title {
+    font-size: var(--md-sys-typescale-title-small-size);
+    font-weight: var(--md-sys-typescale-title-small-weight);
+    margin-bottom: var(--md-sys-spacing-md);
+    color: var(--md-sys-color-on-surface);
+    padding-left: var(--md-sys-spacing-md);
+    border-left: 4px solid var(--md-sys-color-primary);
+    letter-spacing: 0.02em;
+}
+
+.question-cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--md-sys-spacing-sm);
+}
+
+.question-card {
+    width: 44px;
+    height: 44px;
+    border: 2px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-small);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: var(--md-sys-typescale-title-medium-weight);
+    font-size: var(--md-sys-typescale-body-medium-size);
+    cursor: pointer;
+    transition: all var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+    background-color: var(--md-sys-color-surface-container-lowest);
+    color: var(--md-sys-color-on-surface);
+    font-family: inherit;
+    padding: 0;
+    position: relative;
+}
+
+.question-card:hover {
+    transform: translateY(-2px) scale(1.05);
+    border-color: var(--md-sys-color-primary);
+    z-index: 1;
+}
+
+.question-card:active {
+    transform: scale(0.92);
+}
+
+/* ========================================
+   Answer Sheet - Question Card States
+   ======================================== */
+.question-card.answered {
+    background-color: var(--md-sys-color-primary-container);
+    border-color: var(--md-sys-color-primary);
+    color: var(--md-sys-color-on-primary-container);
+}
+
+.question-card.viewed {
+    background-color: var(--md-sys-color-secondary-container);
+    border-color: var(--md-sys-color-secondary);
+    color: var(--md-sys-color-on-secondary-container);
+}
+
+.question-card.current {
+    border-color: var(--md-sys-color-primary);
+    border-width: 3px;
+}
+
+.question-card.answered.viewed {
+    background: linear-gradient(
+        135deg,
+        var(--md-sys-color-primary-container) 60%,
+        var(--md-sys-color-secondary-container) 100%
+    );
+    border-color: var(--md-sys-color-primary);
+}
+
+/* Dot indicator for answered cards */
+.question-card.answered::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--md-sys-color-primary);
+}

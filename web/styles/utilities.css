@@ -1,0 +1,208 @@
+/* ========================================
+   Utility Classes
+   ======================================== */
+.text-center { text-align: center; }
+.text-left { text-align: left; }
+.text-right { text-align: right; }
+
+.mt-sm { margin-top: var(--md-sys-spacing-sm); }
+.mt-md { margin-top: var(--md-sys-spacing-md); }
+.mt-lg { margin-top: var(--md-sys-spacing-lg); }
+.mt-xl { margin-top: var(--md-sys-spacing-xl); }
+
+.mb-sm { margin-bottom: var(--md-sys-spacing-sm); }
+.mb-md { margin-bottom: var(--md-sys-spacing-md); }
+.mb-lg { margin-bottom: var(--md-sys-spacing-lg); }
+.mb-xl { margin-bottom: var(--md-sys-spacing-xl); }
+
+.gap-sm { gap: var(--md-sys-spacing-sm); }
+.gap-md { gap: var(--md-sys-spacing-md); }
+
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
+.flex-wrap { flex-wrap: wrap; }
+.flex-1 { flex: 1; }
+
+.hidden { display: none; }
+
+/* ========================================
+   Container & Layout
+   ======================================== */
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: var(--md-sys-spacing-xl);
+    background-color: var(--md-sys-color-surface-container-low);
+    border-radius: var(--md-sys-shape-corner-large);
+    margin-top: var(--md-sys-spacing-2xl);
+    margin-bottom: var(--md-sys-spacing-2xl);
+    animation: md3-fade-in-up 0.4s var(--md-sys-motion-easing-standard-decelerate);
+    border: 1px solid var(--md-sys-color-outline-variant);
+}
+
+/* Answer page special layout - full viewport */
+#app > div:has(.navigation):has(.question) {
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    background: transparent;
+    padding-top: 80px;
+    padding-bottom: 96px;
+}
+
+#app > div:has(.navigation):has(.question) .header {
+    display: none;
+}
+
+#app > div:has(.navigation):has(.question) .question {
+    max-width: 800px;
+    margin: 0 auto;
+    margin-top: var(--md-sys-spacing-xl);
+}
+
+/* ========================================
+   Error Message
+   ======================================== */
+.error-message {
+    color: var(--md-sys-color-on-error-container);
+    margin-top: var(--md-sys-spacing-lg);
+    padding: var(--md-sys-spacing-md);
+    background-color: var(--md-sys-color-error-container);
+    border: 1px solid var(--md-sys-color-error);
+    border-radius: var(--md-sys-shape-corner-small);
+    animation: md3-fade-in 0.3s var(--md-sys-motion-easing-standard);
+}
+
+/* ========================================
+   Question Bank List & Stats
+   ======================================== */
+.question-bank-list {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 2px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-medium);
+    background-color: var(--md-sys-color-surface-container-lowest);
+}
+
+.question-bank-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.question-bank-list::-webkit-scrollbar-track {
+    background: var(--md-sys-color-surface-container);
+    border-radius: var(--md-sys-shape-corner-full);
+}
+
+.question-bank-list::-webkit-scrollbar-thumb {
+    background: var(--md-sys-color-outline);
+    border-radius: var(--md-sys-shape-corner-full);
+}
+
+.question-bank-list::-webkit-scrollbar-thumb:hover {
+    background: var(--md-sys-color-outline);
+}
+
+.question-bank-item {
+    display: flex;
+    align-items: center;
+    gap: var(--md-sys-spacing-md);
+    padding: var(--md-sys-spacing-lg);
+    cursor: pointer;
+    transition: all var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+    user-select: none;
+}
+
+.question-bank-item:last-child {
+    border-bottom: none;
+}
+
+.question-bank-item:hover {
+    background-color: color-mix(in srgb, var(--md-sys-color-primary) 6%, var(--md-sys-color-surface));
+}
+
+.question-bank-item.selected {
+    background-color: color-mix(in srgb, var(--md-sys-color-primary-container) 70%, var(--md-sys-color-surface));
+    border-left: 4px solid var(--md-sys-color-primary);
+    padding-left: calc(var(--md-sys-spacing-lg) - 4px);
+}
+
+.file-icon {
+    font-size: var(--md-sys-typescale-headline-medium-size);
+    flex-shrink: 0;
+    opacity: 0.7;
+}
+
+.file-name {
+    font-size: var(--md-sys-typescale-body-medium-size);
+    color: var(--md-sys-color-on-surface);
+    flex: 1;
+    font-weight: var(--md-sys-typescale-body-medium-weight);
+}
+
+.no-data {
+    padding: var(--md-sys-spacing-2xl);
+    text-align: center;
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: var(--md-sys-typescale-body-medium-size);
+}
+
+.stats {
+    margin-top: var(--md-sys-spacing-xl);
+    padding: var(--md-sys-spacing-xl);
+    background-color: var(--md-sys-color-surface-container);
+    border-radius: var(--md-sys-shape-corner-large);
+    border: 1px solid var(--md-sys-color-outline-variant);
+    animation: md3-fade-in-up 0.3s var(--md-sys-motion-easing-standard-decelerate);
+}
+
+.stats h3 {
+    margin-bottom: var(--md-sys-spacing-lg);
+    color: var(--md-sys-color-on-surface);
+}
+
+.stats ul {
+    list-style-type: none;
+    margin-left: 0;
+}
+
+.stats li {
+    padding: var(--md-sys-spacing-sm) 0;
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: var(--md-sys-typescale-body-medium-size);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.stats li:last-child {
+    border-bottom: none;
+}
+
+/* ========================================
+   Game Redirect Button
+   ======================================== */
+.game-redirect-btn {
+    margin-top: var(--md-sys-spacing-xl);
+    width: 100%;
+}
+
+.game-redirect-btn .btn {
+    width: 100%;
+    min-height: 48px;
+}
+
+.game-redirect-btn .btn:hover {
+    transform: translateY(-1px);
+}
+
+.game-redirect-btn .btn:active {
+    transform: translateY(0);
+}

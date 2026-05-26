@@ -1,0 +1,343 @@
+/* ========================================
+   MD3 Select Component - Material Design 3
+   下拉选择菜单控件样式
+   ======================================== */
+
+/* --- Select Container --- */
+.md3-select {
+    position: relative;
+    display: inline-flex;
+    flex-direction: column;
+    width: 100%;
+    font-family: inherit;
+}
+
+/* --- Trigger Button --- */
+.md3-select-trigger {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--md-sys-spacing-sm);
+    width: 100%;
+    padding: var(--md-sys-spacing-md) var(--md-sys-spacing-lg);
+    min-height: 48px;
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: var(--md-sys-shape-corner-extra-small);
+    background-color: var(--md-sys-color-surface-container-lowest);
+    color: var(--md-sys-color-on-surface);
+    font-size: var(--md-sys-typescale-body-large-size);
+    line-height: var(--md-sys-typescale-body-large-line-height);
+    font-family: inherit;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: all var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
+    text-align: left;
+}
+
+/* State Layer for Trigger */
+.md3-select-trigger::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: currentColor;
+    opacity: 0;
+    transition: opacity var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
+    pointer-events: none;
+    border-radius: inherit;
+}
+
+.md3-select-trigger:hover::before {
+    opacity: var(--md-sys-state-hover-opacity);
+}
+
+.md3-select-trigger:focus-visible::before {
+    opacity: var(--md-sys-state-focus-opacity);
+}
+
+.md3-select-trigger:active::before {
+    opacity: var(--md-sys-state-pressed-opacity);
+}
+
+.md3-select-trigger:focus-visible {
+    border-color: var(--md-sys-color-primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent);
+}
+
+.md3-select.is-open .md3-select-trigger {
+    border-color: var(--md-sys-color-primary);
+}
+
+.md3-select.is-disabled .md3-select-trigger {
+    opacity: 0.38;
+    cursor: not-allowed;
+    pointer-events: none;
+    border-color: var(--md-sys-color-outline-variant);
+}
+
+/* --- Label --- */
+.md3-select-label {
+    position: absolute;
+    top: -8px;
+    left: 12px;
+    padding: 0 4px;
+    background-color: var(--md-sys-color-surface-container-lowest);
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: var(--md-sys-typescale-label-small-size);
+    font-weight: var(--md-sys-typescale-label-small-weight);
+    line-height: var(--md-sys-typescale-label-small-line-height);
+    pointer-events: none;
+    transition: all var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+}
+
+.md3-select.is-open .md3-select-label {
+    color: var(--md-sys-color-primary);
+}
+
+/* --- Value Display --- */
+.md3-select-value {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--md-sys-color-on-surface);
+}
+
+.md3-select-value.is-placeholder {
+    color: var(--md-sys-color-on-surface-variant);
+}
+
+/* --- Arrow Icon --- */
+.md3-select-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--md-sys-color-on-surface-variant);
+    transition: transform var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized-decelerate);
+}
+
+.md3-select.is-open .md3-select-arrow {
+    transform: rotate(180deg);
+}
+
+/* ========================================
+   Dropdown Menu - Fixed Position Global Float
+   ======================================== */
+.md3-select-dropdown {
+    position: fixed;
+    z-index: 9999;
+    background-color: var(--md-sys-color-surface-container);
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-small);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+    min-width: 120px;
+    transform-origin: top center;
+}
+
+.md3-select-dropdown[data-direction="up"] {
+    transform-origin: bottom center;
+}
+
+/* --- Options List --- */
+.md3-select-options {
+    max-height: inherit;
+    overflow-y: auto;
+    padding: var(--md-sys-spacing-xs) 0;
+}
+
+/* Custom scrollbar */
+.md3-select-options::-webkit-scrollbar {
+    width: 4px;
+}
+
+.md3-select-options::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.md3-select-options::-webkit-scrollbar-thumb {
+    background-color: var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-full);
+}
+
+/* --- Option Item --- */
+.md3-select-option {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--md-sys-spacing-md);
+    padding: var(--md-sys-spacing-md) var(--md-sys-spacing-lg);
+    min-height: 44px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: background-color var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
+    outline: none;
+}
+
+.md3-select-option::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: currentColor;
+    opacity: 0;
+    transition: opacity var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
+    pointer-events: none;
+}
+
+.md3-select-option:hover::before,
+.md3-select-option.is-highlighted::before {
+    opacity: var(--md-sys-state-hover-opacity);
+}
+
+.md3-select-option.is-selected {
+    background-color: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-on-primary-container);
+}
+
+.md3-select-option.is-selected::before {
+    opacity: 0;
+}
+
+.md3-select-option.is-selected:hover::before,
+.md3-select-option.is-selected.is-highlighted::before {
+    opacity: var(--md-sys-state-hover-opacity);
+}
+
+/* --- Option Text --- */
+.md3-select-option-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--md-sys-typescale-body-large-size);
+    line-height: var(--md-sys-typescale-body-large-line-height);
+}
+
+/* --- Check Icon --- */
+.md3-select-check {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--md-sys-color-primary);
+}
+
+.md3-select-option.is-selected .md3-select-check {
+    color: var(--md-sys-color-on-primary-container);
+}
+
+/* ========================================
+   Dropdown Animation - Scale + Fade
+   ======================================== */
+
+/* Enter: dropdown opens */
+.md3-select-dropdown-enter-active {
+    transition: opacity var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized-decelerate),
+                transform var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized-decelerate);
+}
+
+.md3-select-dropdown-enter-from {
+    opacity: 0;
+    transform: scale(0.92);
+}
+
+.md3-select-dropdown-enter-to {
+    opacity: 1;
+    transform: scale(1);
+}
+
+/* Leave: dropdown closes */
+.md3-select-dropdown-leave-active {
+    transition: opacity var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard-accelerate),
+                transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard-accelerate);
+}
+
+.md3-select-dropdown-leave-from {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.md3-select-dropdown-leave-to {
+    opacity: 0;
+    transform: scale(0.92);
+}
+
+/* ========================================
+   Staggered Option Animation
+   ======================================== */
+.md3-select-dropdown-enter-active .md3-select-option {
+    animation: md3-select-option-in var(--md-sys-motion-duration-medium3) var(--md-sys-motion-easing-emphasized-decelerate) both;
+}
+
+.md3-select-dropdown-enter-active .md3-select-option:nth-child(1) { animation-delay: 0ms; }
+.md3-select-dropdown-enter-active .md3-select-option:nth-child(2) { animation-delay: 20ms; }
+.md3-select-dropdown-enter-active .md3-select-option:nth-child(3) { animation-delay: 40ms; }
+.md3-select-dropdown-enter-active .md3-select-option:nth-child(4) { animation-delay: 60ms; }
+.md3-select-dropdown-enter-active .md3-select-option:nth-child(5) { animation-delay: 80ms; }
+.md3-select-dropdown-enter-active .md3-select-option:nth-child(6) { animation-delay: 100ms; }
+.md3-select-dropdown-enter-active .md3-select-option:nth-child(7) { animation-delay: 120ms; }
+.md3-select-dropdown-enter-active .md3-select-option:nth-child(8) { animation-delay: 140ms; }
+.md3-select-dropdown-enter-active .md3-select-option:nth-child(9) { animation-delay: 160ms; }
+.md3-select-dropdown-enter-active .md3-select-option:nth-child(10) { animation-delay: 180ms; }
+
+@keyframes md3-select-option-in {
+    from {
+        opacity: 0;
+        transform: translateX(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* ========================================
+   Dark Mode Adjustments
+   ======================================== */
+body.dark-mode .md3-select-dropdown {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35), 0 1px 6px rgba(0, 0, 0, 0.2);
+}
+
+body.dark-mode .md3-select-label {
+    background-color: var(--md-sys-color-surface-container-lowest);
+}
+
+/* ========================================
+   Size Variants
+   ======================================== */
+.md3-select.md3-select-small .md3-select-trigger {
+    padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-md);
+    min-height: 36px;
+    font-size: var(--md-sys-typescale-body-medium-size);
+    line-height: var(--md-sys-typescale-body-medium-line-height);
+}
+
+.md3-select.md3-select-small .md3-select-option {
+    padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-md);
+    min-height: 36px;
+    font-size: var(--md-sys-typescale-body-medium-size);
+}
+
+/* ========================================
+   Inline Variant (for table cells)
+   ======================================== */
+.md3-select.md3-select-inline .md3-select-trigger {
+    border: none;
+    background-color: transparent;
+    padding: var(--md-sys-spacing-xs) var(--md-sys-spacing-sm);
+    min-height: 32px;
+}
+
+.md3-select.md3-select-inline .md3-select-trigger:hover {
+    background-color: var(--md-sys-color-surface-container-high);
+}
+
+.md3-select.md3-select-inline .md3-select-label {
+    display: none;
+}

@@ -11,16 +11,36 @@ import base64
 import secrets
 import threading
 import gc
+import time
+import platform
+import re
 import logging.handlers
 from typing import Optional
 from functools import wraps
-from flask import Flask, request, jsonify, send_from_directory, session, Response
+from queue import Queue
+from flask import Flask, request, jsonify, send_from_directory, session, Response, stream_with_context
 from flask_cors import CORS
+from werkzeug.security import safe_join as werkzeug_safe_join
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from api_encryptor import (
     decrypt_api_key, generate_encryption_key, get_secret_key, delete_secret_key, is_key_token_valid,
     get_current_key_pair, rotate_key_pair, encrypt_api_key, load_key_pair, save_key_pair
 )
+from rag_module import (
+    create_rag_system, KnowledgeBase, Document, Chunk,
+    RAGDatabase, KnowledgeBaseManager, DocumentProcessor, VectorRetriever, RAGChat,
+    DocumentParser, TextSplitter, EmbeddingClient
+)
+from user_database import (
+    get_user_db, load_users, verify_user, save_users
+)
+from file_router import (
+    create_file_router, FileRouter, FilePermission,
+    FileRouterConfig, FileRouterError, PermissionDeniedError,
+    PathNotAllowedError, FileNotFoundError as FileRouterNotFoundError
+)
+from file_trash_manager import TrashManager, create_trash_manager
+from file_audit_logger import get_file_audit_logger
 
 # 配置日志系统
 log_dir = 'logs'
@@ -43,6 +63,70 @@ logger = logging.getLogger(__name__)
 
 # 线程本地存储，用于在 before_request 中保存请求者身份
 _request_context = threading.local()
+
+# 会话注册表：维护活跃会话的 SSE 队列
+# 格式: {session_id: Queue}
+sse_queues = {}
+sse_lock = threading.Lock()
+
+# 登录限流：记录登录尝试 {ip: [(timestamp, count)]}
+login_attempts = {}
+login_attempts_lock = threading.Lock()
+LOGIN_MAX_ATTEMPTS = 5
+LOGIN_WINDOW_SECONDS = 300  # 5分钟窗口
+
+def _notify_session_invalidated(username, reason):
+    """通过SSE队列通知所有该用户的会话已失效"""
+    with sse_lock:
+        for sid, queue in list(sse_queues.items()):
+            if sid.startswith(username + ':'):
+                try:
+                    queue.put_nowait({
+                        'event': 'session_invalidated',
+                        'data': json.dumps({
+                            'reason': reason,
+                            'message': f'会话已失效: {reason}',
+                            'timestamp': datetime.datetime.now().isoformat()
+                        })
+                    })
+                except:
+                    pass
+
+def _check_login_rate_limit(ip):
+    """检查IP的登录频率限制，返回(是否允许, 剩余等待秒数)"""
+    now = time.time()
+    with login_attempts_lock:
+        # 清理过期记录
+        if ip in login_attempts:
+            login_attempts[ip] = [
+                (t, c) for t, c in login_attempts[ip]
+                if now - t < LOGIN_WINDOW_SECONDS
+            ]
+        
+        attempts = login_attempts.get(ip, [])
+        total = sum(c for _, c in attempts)
+        
+        if total >= LOGIN_MAX_ATTEMPTS:
+            # 计算需要等待的时间
+            oldest = min(t for t, _ in attempts)
+            wait_seconds = LOGIN_WINDOW_SECONDS - (now - oldest)
+            return False, max(1, int(wait_seconds))
+        
+        return True, 0
+
+def _record_login_attempt(ip, success=False):
+    """记录登录尝试"""
+    now = time.time()
+    with login_attempts_lock:
+        if ip not in login_attempts:
+            login_attempts[ip] = []
+        login_attempts[ip].append((now, 1 if not success else 0))
+        
+        # 清理过旧的记录
+        login_attempts[ip] = [
+            (t, c) for t, c in login_attempts[ip]
+            if now - t < LOGIN_WINDOW_SECONDS
+        ]
 
 # DeepSeek解析任务状态
 parsing_status = {
@@ -85,9 +169,6 @@ werkzeug_logger.propagate = False
 
 # 获取当前脚本所在目录的绝对路径
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-
-# 用户配置文件路径
-USERS_FILE = os.path.join(BASE_DIR, 'users.json')
 
 # 系统配置文件路径
 SETTINGS_FILE = os.path.join(BASE_DIR, 'settings.json')
@@ -372,24 +453,77 @@ def get_public_settings(settings):
 
 
 def build_openai_chat_url(base_url):
-    """构建OpenAI兼容接口URL"""
+    """
+    构建OpenAI兼容接口URL，智能识别各种基础URL格式
+
+    支持的输入格式：
+    - https://api.openai.com
+    - https://api.openai.com/
+    - https://api.openai.com/v1
+    - https://api.openai.com/v1/
+    - https://token.sensenova.cn/v1/chat/completions
+    - https://token.sensenova.cn/v1/chat/completions/
+    - https://api.example.com/api/v1/chat
+    - https://api.example.com/openai/v1/chat/completions
+
+    返回格式：确保以 /v1/chat/completions 结尾的完整URL
+    """
     base = (base_url or 'https://api.openai.com').rstrip('/')
+    if not base:
+        base = 'https://api.openai.com'
+
     lower_base = base.lower()
+
+    # 如果已经包含完整的 /v1/chat/completions，直接返回
+    if '/v1/chat/completions' in lower_base:
+        return base
+
+    # 如果以 /chat/completions 结尾（缺少 /v1），在前面补 /v1
     if lower_base.endswith('/chat/completions'):
         return base
+
+    # 如果以 /v1/chat 结尾，补 /completions
+    if lower_base.endswith('/v1/chat'):
+        return f'{base}/completions'
+
+    # 如果以 /v1 结尾，补 /chat/completions
     if lower_base.endswith('/v1'):
         return f'{base}/chat/completions'
+
+    # 其他情况，追加 /v1/chat/completions
     return f'{base}/v1/chat/completions'
 
 
 def build_anthropic_messages_url(base_url):
-    """构建Anthropic消息接口URL"""
+    """
+    构建Anthropic消息接口URL，智能识别各种基础URL格式
+
+    支持的输入格式：
+    - https://api.anthropic.com
+    - https://api.anthropic.com/v1
+    - https://api.anthropic.com/v1/messages
+
+    返回格式：确保以 /v1/messages 结尾的完整URL
+    """
     base = (base_url or 'https://api.anthropic.com').rstrip('/')
+    if not base:
+        base = 'https://api.anthropic.com'
+
     lower_base = base.lower()
+
+    # 如果已经包含完整的 /v1/messages，直接返回
+    if '/v1/messages' in lower_base:
+        return base
+
+    # 如果以 /messages 结尾（缺少 /v1），在前面补 /v1
     if lower_base.endswith('/messages'):
         return base
+
+    # 如果以 /v1 结尾，补 /messages
     if lower_base.endswith('/v1'):
         return f'{base}/messages'
+
+    # 其他情况，追加 /v1/messages
     return f'{base}/v1/messages'
 
 
@@ -465,44 +599,7 @@ def generate_invitation_code():
     code = ''.join(random.choices(chars, k=8))
     return code
 
-def load_users():
-    """加载用户配置文件"""
-    try:
-        if os.path.exists(USERS_FILE):
-            with open(USERS_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                users = data.get('users', [])
-                # 为旧数据兼容：添加缺失字段
-                for user in users:
-                    if 'role' not in user:
-                        user['role'] = 'user'
-                    if 'status' not in user:
-                        user['status'] = 'active'
-                    if 'invitation_code' not in user:
-                        user['invitation_code'] = generate_invitation_code()
-                return users
-    except Exception as e:
-        logger.error(f"加载用户配置文件失败: {e}")
-    return []
 
-def verify_user(username, password):
-    """验证用户名和密码（使用哈希密码）"""
-    users = load_users()
-    hashed_pw = hash_password(password)
-    for user in users:
-        if user.get('username') == username and user.get('password') == hashed_pw:
-            return True
-    return False
-
-def save_users(users):
-    """保存用户配置文件"""
-    try:
-        with open(USERS_FILE, 'w', encoding='utf-8') as f:
-            json.dump({'users': users}, f, ensure_ascii=False, indent=2)
-        return True
-    except Exception as e:
-        logger.error(f"保存用户配置文件失败: {e}")
-        return False
 
 def load_settings():
     """
@@ -552,79 +649,248 @@ def save_settings(settings):
         return False
 
 def hash_password(password):
-    """密码哈希"""
-    return hashlib.sha256(password.encode('utf-8')).hexdigest()
+    """密码哈希 - 使用PBKDF2安全哈希"""
+    from werkzeug.security import generate_password_hash
+    return generate_password_hash(password, method='pbkdf2:sha256', salt_length=16)
 
-def generate_captcha_code(length=4):
-    """生成随机验证码字符串（4位数字）"""
-    return ''.join(random.choices(string.digits, k=length))
+import math
 
-def generate_captcha_image(captcha_code):
-    """生成扭曲验证码图像"""
-    width = 160
-    height = 60
+def generate_captcha_code(length=5):
+    """生成随机验证码字符串（数字+大小写字母，排除易混淆字符）"""
+    # 排除易混淆字符：0/O, 1/I/l
+    chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+    return ''.join(random.choices(chars, k=length))
+
+def _generate_gradient_background(draw, width, height):
+    """生成渐变背景"""
+    # 随机选择背景色系
+    base_hue = random.randint(0, 360)
+    for y in range(height):
+        r = int(200 + 30 * math.sin(base_hue + y * 0.1))
+        g = int(200 + 30 * math.sin(base_hue + 120 + y * 0.1))
+        b = int(200 + 30 * math.sin(base_hue + 240 + y * 0.1))
+        draw.line([(0, y), (width, y)], fill=(r % 256, g % 256, b % 256))
+
+def _apply_wave_distortion(image, amplitude=3, frequency=2):
+    """应用波浪扭曲效果，破坏OCR字符分割"""
+    width, height = image.size
+    distorted = Image.new('RGBA', (width, height), (255, 255, 255, 0))
     
-    # 创建图像
-    image = Image.new('RGB', (width, height), (255, 255, 255))
-    draw = ImageDraw.Draw(image)
+    for y in range(height):
+        for x in range(width):
+            offset_x = int(amplitude * math.sin(frequency * math.pi * y / height))
+            offset_y = int(amplitude * math.cos(frequency * math.pi * x / width))
+            
+            src_x = x - offset_x
+            src_y = y - offset_y
+            
+            if 0 <= src_x < width and 0 <= src_y < height:
+                pixel = image.getpixel((src_x, src_y))
+                distorted.putpixel((x, y), pixel)
     
-    # 绘制干扰线
-    for _ in range(8):
-        x1 = random.randint(0, width)
-        y1 = random.randint(0, height)
-        x2 = random.randint(0, width)
-        y2 = random.randint(0, height)
+    return distorted
+
+def _apply_radial_distortion(image, center_x=None, center_y=None, strength=3):
+    """应用径向扭曲效果，从中心向外产生鱼眼/桶形畸变"""
+    width, height = image.size
+    if center_x is None:
+        center_x = width // 2
+    if center_y is None:
+        center_y = height // 2
+    
+    distorted = Image.new('RGBA', (width, height), (255, 255, 255, 0))
+    max_dist = math.sqrt(center_x ** 2 + center_y ** 2)
+    
+    for y in range(height):
+        for x in range(width):
+            dx = x - center_x
+            dy = y - center_y
+            dist = math.sqrt(dx ** 2 + dy ** 2)
+            
+            if dist == 0:
+                distorted.putpixel((x, y), image.getpixel((x, y)))
+                continue
+            
+            # 归一化距离
+            norm_dist = dist / max_dist
+            
+            # 桶形畸变公式：偏移量与距离的平方成正比
+            distortion_factor = 1.0 - strength * (norm_dist ** 2)
+            
+            src_x = int(center_x + dx * distortion_factor)
+            src_y = int(center_y + dy * distortion_factor)
+            
+            if 0 <= src_x < width and 0 <= src_y < height:
+                pixel = image.getpixel((src_x, src_y))
+                distorted.putpixel((x, y), pixel)
+            else:
+                distorted.putpixel((x, y), (255, 255, 255, 0))
+    
+    return distorted
+
+def _draw_curve_interference(draw, width, height, num_curves=4):
+    """绘制贝塞尔曲线干扰，替代简单的直线干扰"""
+    for _ in range(num_curves):
+        # 随机选择曲线参数
+        x_start = random.randint(0, width // 4)
+        y_start = random.randint(0, height)
+        x_end = random.randint(3 * width // 4, width)
+        y_end = random.randint(0, height)
+        
+        # 控制点
+        ctrl_x = random.randint(width // 4, 3 * width // 4)
+        ctrl_y = random.randint(0, height)
+        
         color = (random.randint(100, 200), random.randint(100, 200), random.randint(100, 200))
-        draw.line([(x1, y1), (x2, y2)], fill=color, width=1)
-    
-    # 绘制干扰点
-    for _ in range(50):
+        thickness = random.randint(1, 2)
+        
+        # 绘制二次贝塞尔曲线近似
+        points = []
+        num_points = 50
+        for i in range(num_points + 1):
+            t = i / num_points
+            x = int((1 - t) ** 2 * x_start + 2 * (1 - t) * t * ctrl_x + t ** 2 * x_end)
+            y = int((1 - t) ** 2 * y_start + 2 * (1 - t) * t * ctrl_y + t ** 2 * y_end)
+            points.append((x, y))
+        
+        if len(points) > 1:
+            draw.line(points, fill=color, width=thickness)
+
+def _draw_noise_dots(draw, width, height, num_dots=80):
+    """绘制随机噪点，使用不同大小和透明度模拟"""
+    for _ in range(num_dots):
         x = random.randint(0, width)
         y = random.randint(0, height)
-        color = (random.randint(100, 200), random.randint(100, 200), random.randint(100, 200))
-        draw.point((x, y), fill=color)
+        size = random.randint(1, 3)
+        color = (
+            random.randint(80, 220),
+            random.randint(80, 220),
+            random.randint(80, 220)
+        )
+        draw.ellipse([x, y, x + size, y + size], fill=color)
+
+def _draw_arc_interference(draw, width, height, num_arcs=3):
+    """绘制随机圆弧干扰"""
+    for _ in range(num_arcs):
+        x = random.randint(0, width)
+        y = random.randint(0, height)
+        radius = random.randint(10, 40)
+        
+        color = (
+            random.randint(120, 200),
+            random.randint(120, 200),
+            random.randint(120, 200)
+        )
+        
+        start_angle = random.randint(0, 180)
+        end_angle = start_angle + random.randint(60, 180)
+        
+        draw.arc(
+            [x - radius, y - radius, x + radius, y + radius],
+            start_angle, end_angle,
+            fill=color, width=random.randint(1, 2)
+        )
+
+def generate_captcha_image(captcha_code):
+    """生成高安全性验证码图像，抗AI识别"""
+    width = 200
+    height = 80
     
-    # 尝试使用系统字体
-    font_path = None
+    # 创建图像（RGBA模式支持半透明效果）
+    image = Image.new('RGBA', (width, height), (255, 255, 255, 255))
+    draw = ImageDraw.Draw(image)
+    
+    # 1. 绘制渐变背景
+    _generate_gradient_background(draw, width, height)
+    
+    # 2. 绘制圆弧干扰
+    _draw_arc_interference(draw, width, height, num_arcs=3)
+    
+    # 3. 绘制贝塞尔曲线干扰
+    _draw_curve_interference(draw, width, height, num_curves=5)
+    
+    # 4. 绘制噪点
+    _draw_noise_dots(draw, width, height, num_dots=80)
+    
+    # 5. 加载字体（优先使用多种字体混合）
     font_paths = [
         r'C:\Windows\Fonts\arial.ttf',
+        r'C:\Windows\Fonts\arialbd.ttf',
+        r'C:\Windows\Fonts\arialbi.ttf',
         r'C:\Windows\Fonts\msyh.ttc',
+        r'C:\Windows\Fonts\msyhbd.ttc',
         r'C:\Windows\Fonts\simhei.ttf',
+        r'C:\Windows\Fonts\times.ttf',
+        r'C:\Windows\Fonts\timesbd.ttf',
+        r'C:\Windows\Fonts\verdana.ttf',
+        r'C:\Windows\Fonts\verdanab.ttf',
     ]
+    available_fonts = []
     for path in font_paths:
         if os.path.exists(path):
-            font_path = path
-            break
+            available_fonts.append(path)
     
-    try:
-        if font_path:
-            font = ImageFont.truetype(font_path, 36)
+    # 6. 绘制验证码文字（每个字符独立随机处理）
+    char_width = width // (len(captcha_code) + 1)
+    
+    for i, char in enumerate(captcha_code):
+        if available_fonts:
+            font_path = random.choice(available_fonts)
+            try:
+                font = ImageFont.truetype(font_path, random.randint(32, 48))
+            except:
+                font = ImageFont.load_default()
         else:
             font = ImageFont.load_default()
-    except:
-        font = ImageFont.load_default()
-    
-    # 绘制验证码文字
-    char_width = width // len(captcha_code)
-    for i, char in enumerate(captcha_code):
-        x = char_width * i + random.randint(5, 15)
-        y = random.randint(10, 20)
+        
         angle = random.randint(-30, 30)
-        color = (random.randint(0, 100), random.randint(0, 100), random.randint(0, 100))
         
-        # 创建单个字符图像用于旋转
-        char_image = Image.new('RGBA', (40, 50), (255, 255, 255, 0))
+        color = (
+            random.randint(0, 80),
+            random.randint(0, 80),
+            random.randint(0, 80)
+        )
+        
+        char_image = Image.new('RGBA', (60, 70), (255, 255, 255, 0))
         char_draw = ImageDraw.Draw(char_image)
-        char_draw.text((0, 0), char, font=font, fill=color)
         
-        # 旋转
-        char_image = char_image.rotate(angle, expand=True)
+        scale = random.uniform(0.8, 1.2)
         
-        # 粘贴到主图像
+        char_draw.text((5, 5), char, font=font, fill=color)
+        
+        new_size = (int(60 * scale), int(70 * scale))
+        char_image = char_image.resize(new_size, Image.LANCZOS)
+        
+        char_image = char_image.rotate(angle, expand=True, fillcolor=(255, 255, 255, 0))
+        
+        char_w, char_h = char_image.size
+        
+        base_x = char_width * i + random.randint(5, 15)
+        base_y = random.randint(10, 25)
+        
+        x = max(0, min(width - char_w, base_x))
+        y = max(0, min(height - char_h, base_y))
+        
         image.paste(char_image, (x, y), char_image)
     
-    # 应用模糊效果增加识别难度
-    image = image.filter(ImageFilter.GaussianBlur(radius=0.5))
+    # 7. 应用全局多重扭曲（破坏OCR字符分割）
+    image = _apply_wave_distortion(image, amplitude=1.5, frequency=1.2)
+    
+    image = image.convert('RGB')
+    
+    image = image.filter(ImageFilter.GaussianBlur(radius=0.8))
+    image = image.filter(ImageFilter.SHARPEN)
+    
+    final_draw = ImageDraw.Draw(image)
+    for _ in range(40):
+        x = random.randint(0, width - 1)
+        y = random.randint(0, height - 1)
+        color = (
+            random.randint(100, 180),
+            random.randint(100, 180),
+            random.randint(100, 180)
+        )
+        final_draw.point((x, y), fill=color)
     
     return image
 
@@ -661,17 +927,95 @@ def login_required(f):
 PAPER_JSON_DIR = os.path.join(BASE_DIR, 'paper_json')
 if not os.path.exists(PAPER_JSON_DIR):
     os.makedirs(PAPER_JSON_DIR)
+
+def validate_file_path_input(file_path):
+    if not file_path:
+        return 'questions.json'
+    if len(file_path) > 255:
+        raise ValueError("文件路径过长")
+    if not re.match(r'^[\w\-\./]+$', file_path):
+        raise ValueError("文件路径包含非法字符")
+    if '..' in file_path or '~' in file_path:
+        raise ValueError("文件路径包含非法模式")
+    return file_path
     logger.info(f'创建题库目录: {PAPER_JSON_DIR}')
 
 app = Flask(__name__, static_folder='web', static_url_path='')
 
-# Session配置
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production-12345')
-app.config['SESSION_COOKIE_NAME'] = 'tg_helper_session'
-app.config['SESSION_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+# 文件路由配置
+FILE_ROUTER_CONFIG = FileRouterConfig(
+    allowed_base_dirs=[
+        os.path.join(BASE_DIR, 'paper_json'),
+        os.path.join(BASE_DIR, 'uploads'),
+        os.path.join(BASE_DIR, 'data')
+    ],
+    trash_enabled=True,
+    trash_path=os.path.join(BASE_DIR, '.trash'),
+    trash_retention_days=7,
+    audit_enabled=True,
+    audit_log_dir=os.path.join(BASE_DIR, 'logs', 'file_audit'),
+    max_file_size_mb=100,
+    allowed_extensions=['.json', '.txt', '.pdf', '.png', '.jpg', '.jpeg']
+)
 
-CORS(app, resources={r"/*": {"origins": "*"}})
+# 初始化文件路由（单例）
+file_router = create_file_router(FILE_ROUTER_CONFIG)
+
+# 在线用户跟踪：{username: last_activity_time}
+_online_users = {}
+_online_users_lock = threading.Lock()
+
+# Session配置 - 安全加固
+# 生成或加载持久化密钥，避免每次重启后所有用户被迫重新登录
+SESSION_KEY_FILE = os.path.join(BASE_DIR, '.session_key')
+
+def _load_or_generate_session_key():
+    """加载或生成会话密钥"""
+    if os.path.exists(SESSION_KEY_FILE):
+        try:
+            with open(SESSION_KEY_FILE, 'r', encoding='utf-8') as f:
+                key = f.read().strip()
+                if key and len(key) >= 32:
+                    return key
+        except Exception:
+            pass
+    # 生成新的随机密钥并持久化
+    new_key = secrets.token_hex(32)
+    try:
+        with open(SESSION_KEY_FILE, 'w', encoding='utf-8') as f:
+            f.write(new_key)
+        if platform.system() == 'Windows':
+            try:
+                import subprocess
+                subprocess.run(
+                    ['icacls', SESSION_KEY_FILE, '/inheritance:r'],
+                    check=False, capture_output=True, timeout=5
+                )
+                subprocess.run(
+                    ['icacls', SESSION_KEY_FILE, '/grant', f'{os.getlogin()}:F'],
+                    check=False, capture_output=True, timeout=5
+                )
+            except Exception as e:
+                logger.warning(f'Windows文件权限设置失败: {e}')
+        else:
+            os.chmod(SESSION_KEY_FILE, 0o600)
+        logger.info('已生成并持久化新的会话密钥')
+    except Exception as e:
+        logger.warning(f'持久化会话密钥失败，使用内存密钥: {e}')
+    return new_key
+
+_is_production = os.environ.get('FLASK_ENV') == 'production'
+
+app.secret_key = _load_or_generate_session_key()
+app.config['SESSION_COOKIE_NAME'] = 'tg_helper_session'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = _is_production
+app.config['PERMANENT_SESSION_LIFETIME'] = datetime.timedelta(hours=2)
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+
+_cors_origins = os.environ.get('CORS_ORIGINS', '').split(',') if os.environ.get('CORS_ORIGINS') else (['*'] if not _is_production else [])
+CORS(app, resources={r"/api/*": {"origins": _cors_origins, "supports_credentials": True}})
 
 @app.before_request
 def set_request_context():
@@ -679,17 +1023,62 @@ def set_request_context():
     user_id = request.headers.get('X-User-Identity', 'unknown')
     ip = request.remote_addr or 'unknown'
     _request_context.user_identity = f'[User:{user_id}][IP:{ip}]'
+    # 更新会话活跃时间
+    if session.get('logged_in'):
+        session['last_activity'] = time.time()
+        # 更新在线用户状态
+        username = session.get('username')
+        if username:
+            with _online_users_lock:
+                _online_users[username] = time.time()
+
+@app.before_request
+def generate_csp_nonce():
+    if not hasattr(request, '_csp_nonce'):
+        request._csp_nonce = secrets.token_urlsafe(16)
+
+@app.before_request
+def enforce_csrf_protection():
+    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE') and request.path.startswith('/api/'):
+        if not request.headers.get('X-Requested-With'):
+            return jsonify({'success': False, 'message': '缺少CSRF防护头'}), 403
 
 @app.after_request
-def disable_cache(response):
-    """禁用静态文件缓存，确保开发时始终加载最新版本"""
+def add_security_and_cache_headers(response):
+    """添加安全响应头和缓存控制"""
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
+
+    if _is_production and request.is_secure:
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+
+    _csp_nonce = getattr(request, '_csp_nonce', '')
+    csp_script_src = f"'self' 'nonce-{_csp_nonce}' 'unsafe-eval'"
+    csp_policy = (
+        "default-src 'self'; "
+        f"script-src {csp_script_src}; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; "
+        "connect-src 'self'; "
+        "font-src 'self'; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
+    )
+    response.headers['Content-Security-Policy'] = csp_policy
+    
+    # 禁用静态文件缓存
     path = request.path
     if path.endswith(('.css', '.html', '.js')):
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
         response.headers['Pragma'] = 'no-cache'
         response.headers['Expires'] = '0'
+    
+    # 日志记录
     method = request.method
-    path = request.path
     status = response.status_code
     logger.info(f'请求: {method} {path} | 状态码: {status}')
     return response
@@ -833,12 +1222,10 @@ class SafeQuestionManager:
     
     def load_questions(self, file_path):
         """安全加载题库文件，仅允许访问PAPER_JSON_DIR下的JSON文件"""
-        # 确保文件路径在PAPER_JSON_DIR内
-        safe_path = os.path.abspath(os.path.join(PAPER_JSON_DIR, file_path))
-        if not safe_path.startswith(PAPER_JSON_DIR):
+        safe_path = werkzeug_safe_join(PAPER_JSON_DIR, file_path)
+        if safe_path is None:
             raise ValueError("非法文件路径，禁止跨目录访问")
         
-        # 确保只加载JSON文件
         if not safe_path.endswith('.json'):
             raise ValueError("仅允许加载JSON格式的题库文件")
         
@@ -1111,33 +1498,42 @@ def register():
     session_captcha = session.get('captcha_code', '').lower()
     if captcha.lower() != session_captcha:
         return jsonify({'success': False, 'message': '验证码错误'}), 400
-    
-    if not invite_code:
-        return jsonify({'success': False, 'message': '请输入邀请码'}), 400
-    
-    users = load_users()
-    for user in users:
-        if user.get('username') == username:
-            return jsonify({'success': False, 'message': '用户名已存在'}), 409
-    
+    session.pop('captcha_code', None)
+
+    db = get_user_db()
+
+    # 检查用户名是否已存在
+    if db.user_exists(username):
+        return jsonify({'success': False, 'message': '用户名已存在'}), 409
+
+    default_role = 'guest'
+    inviter = None
+    if invite_code:
+        inviter_user = db.get_user_by_invitation_code(invite_code)
+        if not inviter_user:
+            return jsonify({'success': False, 'message': '邀请码无效'}), 400
+        inviter = inviter_user.get('username')
+        default_role = 'user'
+        logger.info(f'用户 {username} 使用用户 {inviter} 的邀请码注册')
+
     new_user = {
         'username': username,
         'password': hash_password(password),
-        'role': 'guest',
+        'role': default_role,
         'status': 'active',
         'invitation_code': generate_invitation_code(),
-        'created_at': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        'created_at': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'invited_by': inviter if invite_code else None
     }
-    users.append(new_user)
-    
-    if save_users(users):
-        logger.info(f'用户 {username} 注册成功')
+
+    if db.create_user(new_user):
+        logger.info(f'用户 {username} 注册成功，角色: {default_role}')
         return jsonify({
             'success': True,
             'message': '注册成功，请登录'
         })
     else:
-        logger.error(f'用户注册失败：保存配置文件失败')
+        logger.error(f'用户注册失败：保存到数据库失败')
         return jsonify({'success': False, 'message': '注册失败，请稍后重试'}), 500
 
 @app.route('/api/login', methods=['POST'])
@@ -1151,27 +1547,43 @@ def login():
     if not username or not password:
         return jsonify({'success': False, 'message': '用户名和密码不能为空'}), 400
     
+    # 检查登录频率限制
+    client_ip = request.remote_addr or 'unknown'
+    allowed, wait_seconds = _check_login_rate_limit(client_ip)
+    if not allowed:
+        return jsonify({
+            'success': False, 
+            'message': f'登录尝试过于频繁，请{wait_seconds}秒后再试',
+            'rate_limited': True,
+            'retry_after': wait_seconds
+        }), 429
+    
     if captcha:
         session_captcha = session.get('captcha_code', '').lower()
         if captcha.lower() != session_captcha:
+            session.pop('captcha_code', None)
+            _record_login_attempt(client_ip, success=False)
             return jsonify({'success': False, 'message': '验证码错误'}), 400
     
-    users = load_users()
-    hashed_pw = hash_password(password)
-    user_found = None
-    for user in users:
-        if user.get('username') == username and user.get('password') == hashed_pw:
-            user_found = user
-            break
-    
-    if user_found:
+    db = get_user_db()
+    user_found = db.get_user_by_username(username)
+
+    if user_found and verify_user(username, password):
         if user_found.get('role') == 'banned':
+            _record_login_attempt(client_ip, success=False)
             return jsonify({'success': False, 'message': '当前用户已被封禁，请联系管理员'}), 403
-        
+
         session['logged_in'] = True
         session['username'] = username
         session['role'] = user_found.get('role', 'user')
+        session['last_activity'] = time.time()
+        session['login_time'] = datetime.datetime.now().isoformat()
         session.pop('captcha_code', None)
+
+        # 更新用户 last_login 字段
+        db.update_last_login(username, session['login_time'])
+        
+        _record_login_attempt(client_ip, success=True)
         logger.info(f'用户 {username} 登录成功')
         return jsonify({
             'success': True,
@@ -1180,6 +1592,7 @@ def login():
             'role': session['role']
         })
     else:
+        _record_login_attempt(client_ip, success=False)
         logger.warning(f'用户 {username} 登录失败')
         return jsonify({'success': False, 'message': '用户名或密码错误'}), 401
 
@@ -1188,6 +1601,9 @@ def logout():
     """用户登出"""
     username = session.get('username', 'unknown')
     session.clear()
+    # 从在线用户列表中移除
+    with _online_users_lock:
+        _online_users.pop(username, None)
     logger.info(f'用户 {username} 已登出')
     return jsonify({'success': True, 'message': '已登出'})
 
@@ -1206,22 +1622,67 @@ def check_login():
         'logged_in': False
     })
 
+@app.route('/api/events', methods=['GET'])
+@login_required
+def sse_events():
+    """Server-Sent Events 端点 - 实时推送会话状态变更"""
+    username = session.get('username', 'unknown')
+    session_id = f"{username}:{secrets.token_hex(8)}"
+    
+    # 创建消息队列
+    queue = Queue(maxsize=50)
+    with sse_lock:
+        sse_queues[session_id] = queue
+    
+    def event_stream():
+        try:
+            # 发送初始连接确认
+            yield f"event: connected\ndata: {json.dumps({'session_id': session_id, 'username': username})}\n\n"
+            
+            # 定期发送心跳保活
+            last_heartbeat = time.time()
+            
+            while True:
+                try:
+                    # 等待消息，超时30秒发送心跳
+                    msg = queue.get(timeout=30)
+                    if msg.get('event') == 'session_invalidated':
+                        yield f"event: {msg['event']}\ndata: {msg['data']}\n\n"
+                        break  # 会话失效，关闭连接
+                except:
+                    # 超时，发送心跳
+                    now = time.time()
+                    if now - last_heartbeat >= 25:
+                        yield f"event: heartbeat\ndata: {json.dumps({'timestamp': datetime.datetime.now().isoformat()})}\n\n"
+                        last_heartbeat = now
+        except GeneratorExit:
+            pass
+        finally:
+            # 清理队列
+            with sse_lock:
+                sse_queues.pop(session_id, None)
+    
+    return Response(
+        stream_with_context(event_stream()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no'  # 禁用nginx缓冲
+        }
+    )
+
 @app.route('/api/verify_user', methods=['GET'])
 @login_required
 def verify_user_status():
-    """验证当前用户状态（用于定时检测）"""
+    """验证当前用户状态（用于SSE事件触发，非轮询）"""
     username = session.get('username')
-    users = load_users()
-    
-    # 查找当前用户
-    user_found = None
-    for user in users:
-        if user.get('username') == username:
-            user_found = user
-            break
-    
+    db = get_user_db()
+    user_found = db.get_user_by_username(username)
+
     if not user_found:
         # 用户不存在，清除会话
+        _notify_session_invalidated(username, 'user_not_found')
         session.clear()
         return jsonify({
             'success': True,
@@ -1232,6 +1693,7 @@ def verify_user_status():
     
     if user_found.get('role') == 'banned':
         # 用户被封禁
+        _notify_session_invalidated(username, 'banned')
         session.clear()
         return jsonify({
             'success': True,
@@ -1249,10 +1711,48 @@ def verify_user_status():
         'message': f'用户 {username} 验证通过'
     })
 
+@app.route('/api/heartbeat', methods=['POST'])
+@login_required
+def heartbeat():
+    """心跳接口 - 保持会话活跃，轻量级验证用户状态"""
+    username = session.get('username')
+    db = get_user_db()
+    user_found = db.get_user_by_username(username)
+
+    if not user_found:
+        _notify_session_invalidated(username, 'user_not_found')
+        session.clear()
+        return jsonify({
+            'success': True,
+            'valid': False,
+            'reason': 'user_not_found'
+        })
+    
+    if user_found.get('role') == 'banned':
+        _notify_session_invalidated(username, 'banned')
+        session.clear()
+        return jsonify({
+            'success': True,
+            'valid': False,
+            'reason': 'banned'
+        })
+    
+    return jsonify({
+        'success': True,
+        'valid': True,
+        'role': user_found.get('role', 'user'),
+        'timestamp': datetime.datetime.now().isoformat()
+    })
+
 @app.route('/admin')
 def admin_page():
     """返回管理员页面"""
-    return send_from_directory(app.static_folder, 'admin.html')
+    return _serve_html_with_nonce('admin.html')
+
+@app.route('/editor')
+def editor_page():
+    """返回题库编辑独立页面"""
+    return _serve_html_with_nonce('editor.html')
 
 @app.route('/api/admin/users', methods=['GET'])
 @admin_required
@@ -1260,15 +1760,30 @@ def get_all_users():
     """获取所有用户列表（管理员专用）"""
     try:
         users = load_users()
+        # 获取鉴权超时时间（秒）
+        settings = load_settings()
+        auth_timeout_minutes = settings.get('account', {}).get('auth_timeout_minutes', 1)
+        auth_timeout_seconds = auth_timeout_minutes * 60
+        current_time = time.time()
+        
         user_list = []
         for user in users:
+            username = user.get('username')
+            # 判断是否在线
+            is_online = False
+            with _online_users_lock:
+                last_active = _online_users.get(username, 0)
+                if last_active > 0 and (current_time - last_active) < auth_timeout_seconds:
+                    is_online = True
+            
             user_list.append({
-                'username': user.get('username'),
-                'password': user.get('password'),
+                'username': username,
                 'role': user.get('role', 'user'),
                 'status': user.get('status', 'active'),
                 'invitation_code': user.get('invitation_code'),
-                'created_at': user.get('created_at', '未知')
+                'created_at': user.get('created_at', '未知'),
+                'last_login': user.get('last_login', '从未登录'),
+                'is_online': is_online
             })
         return jsonify({
             'success': True,
@@ -1284,24 +1799,19 @@ def update_user_role(username):
     """修改用户角色"""
     data = request.get_json()
     new_role = data.get('role')
-    
+
     if new_role not in ['guest', 'user', 'admin', 'banned']:
         return jsonify({'success': False, 'message': '无效的角色'}), 400
-    
-    users = load_users()
-    for user in users:
-        if user.get('username') == username:
-            user['role'] = new_role
-            if save_users(users):
-                logger.info(f'管理员 {session.get("username")} 将用户 {username} 的角色修改为 {new_role}')
-                return jsonify({
-                    'success': True,
-                    'message': '角色修改成功'
-                })
-            else:
-                return jsonify({'success': False, 'message': '保存失败'}), 500
-    
-    return jsonify({'success': False, 'message': '用户不存在'}), 404
+
+    db = get_user_db()
+    if db.update_user(username, {'role': new_role}):
+        logger.info(f'管理员 {session.get("username")} 将用户 {username} 的角色修改为 {new_role}')
+        return jsonify({
+            'success': True,
+            'message': '角色修改成功'
+        })
+    else:
+        return jsonify({'success': False, 'message': '用户不存在或保存失败'}), 404
 
 @app.route('/api/admin/users/<username>/status', methods=['PUT'])
 @admin_required
@@ -1309,47 +1819,41 @@ def update_user_status(username):
     """修改用户状态（封禁/解封）"""
     data = request.get_json()
     new_status = data.get('status')
-    
+
     if new_status not in ['active', 'banned']:
         return jsonify({'success': False, 'message': '无效的状态'}), 400
-    
-    users = load_users()
-    for user in users:
-        if user.get('username') == username:
-            user['status'] = new_status
-            if save_users(users):
-                action = '封禁' if new_status == 'banned' else '解封'
-                logger.info(f'管理员 {session.get("username")} {action}了用户 {username}')
-                return jsonify({
-                    'success': True,
-                    'message': f'用户已{action}'
-                })
-            else:
-                return jsonify({'success': False, 'message': '保存失败'}), 500
-    
-    return jsonify({'success': False, 'message': '用户不存在'}), 404
+
+    db = get_user_db()
+    if db.update_user(username, {'status': new_status}):
+        action = '封禁' if new_status == 'banned' else '解封'
+        logger.info(f'管理员 {session.get("username")} {action}了用户 {username}')
+        return jsonify({
+            'success': True,
+            'message': f'用户已{action}'
+        })
+    else:
+        return jsonify({'success': False, 'message': '用户不存在或保存失败'}), 404
 
 @app.route('/api/admin/users/<username>/invitation_code', methods=['PUT'])
 @admin_required
 def update_user_invitation_code(username):
     """重置用户邀请码"""
-    users = load_users()
-    for user in users:
-        if user.get('username') == username:
-            old_code = user.get('invitation_code')
-            new_code = generate_invitation_code()
-            user['invitation_code'] = new_code
-            if save_users(users):
-                logger.info(f'管理员 {session.get("username")} 重置了用户 {username} 的邀请码')
-                return jsonify({
-                    'success': True,
-                    'message': '邀请码已重置',
-                    'new_code': new_code
-                })
-            else:
-                return jsonify({'success': False, 'message': '保存失败'}), 500
-    
-    return jsonify({'success': False, 'message': '用户不存在'}), 404
+    db = get_user_db()
+    user = db.get_user_by_username(username)
+
+    if not user:
+        return jsonify({'success': False, 'message': '用户不存在'}), 404
+
+    new_code = generate_invitation_code()
+    if db.update_user(username, {'invitation_code': new_code}):
+        logger.info(f'管理员 {session.get("username")} 重置了用户 {username} 的邀请码')
+        return jsonify({
+            'success': True,
+            'message': '邀请码已重置',
+            'new_code': new_code
+        })
+    else:
+        return jsonify({'success': False, 'message': '保存失败'}), 500
 
 @app.route('/api/admin/deepseek/parse', methods=['POST'])
 @admin_required
@@ -1366,7 +1870,10 @@ def deepseek_parse():
         data = request.get_json()
         encrypted_api_key = data.get('encrypted_api_key', '').strip()
         key_token = data.get('key_token', '').strip()
-        file_path = data.get('file_path', 'questions.json')
+        raw_file_path = validate_file_path_input(data.get('file_path', 'questions.json'))
+        file_path = werkzeug_safe_join(PAPER_JSON_DIR, raw_file_path)
+        if file_path is None:
+            return jsonify({'success': False, 'message': '非法文件路径'}), 400
 
         settings = load_settings()
         agent_settings = settings.get('ai_agents', {}).get(QUESTION_ANALYSIS_AGENT_KEY, {})
@@ -1518,6 +2025,8 @@ def deepseek_parse():
         logger.info(f'管理员 {session.get("username")} 启动DeepSeek解析任务')
         return jsonify({'success': True, 'message': '解析任务已启动'})
         
+    except ValueError as e:
+        return jsonify({'success': False, 'message': str(e)}), 400
     except Exception as e:
         logger.error(f'启动DeepSeek解析失败: {e}')
         return jsonify({'success': False, 'message': f'启动失败: {str(e)}'}), 500
@@ -1649,31 +2158,48 @@ def rename_question_bank():
 @app.route('/api/admin/question_bank/delete', methods=['POST'])
 @admin_required
 def delete_question_bank():
-    """删除题库文件"""
+    """删除题库文件（使用文件路由，支持回收站）"""
     try:
         data = request.get_json()
         filename = data.get('filename', '').strip()
-        
+        immediate = data.get('immediate', False)  # 是否立即永久删除
+
         if not filename:
             return jsonify({'success': False, 'message': '文件名不能为空'}), 400
-        
+
         if not filename.endswith('.json'):
             filename += '.json'
-        
-        file_path = os.path.abspath(os.path.join(PAPER_JSON_DIR, filename))
-        if not file_path.startswith(PAPER_JSON_DIR):
-            return jsonify({'success': False, 'message': '非法文件路径'}), 403
-        
-        if not os.path.exists(file_path):
-            return jsonify({'success': False, 'message': '题库文件不存在'}), 404
-        
-        os.remove(file_path)
-        logger.info(f'管理员 {session.get("username")} 删除了题库 {filename}')
-        return jsonify({'success': True, 'message': '题库删除成功'})
-        
+
+        # 构建相对路径
+        file_path = os.path.join('paper_json', filename)
+
+        username = session.get('username', 'unknown')
+
+        # 使用文件路由删除文件
+        result = file_router.delete(
+            file_path,
+            FilePermission.ADMIN,
+            immediate=immediate,
+            user_context=username
+        )
+
+        if result:
+            action = '永久删除' if immediate else '移入回收站'
+            logger.info(f'管理员 {username} {action}了题库 {filename}')
+            return jsonify({
+                'success': True,
+                'message': f'题库已{action}'
+            })
+        else:
+            return jsonify({'success': False, 'message': '删除失败'}), 500
+
+    except FileRouterNotFoundError:
+        return jsonify({'success': False, 'message': '题库文件不存在'}), 404
+    except PermissionDeniedError:
+        return jsonify({'success': False, 'message': '权限不足'}), 403
     except Exception as e:
         logger.error(f'题库删除失败: {e}')
-        return jsonify({'success': False, 'message': f'删除失败: {str(e)}'}), 500
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/admin/question_bank/upload', methods=['POST'])
 @admin_required
@@ -1813,15 +2339,241 @@ def list_question_bank():
         logger.error(f'获取题库列表失败: {e}')
         return jsonify({'success': False, 'message': f'获取列表失败: {str(e)}'}), 500
 
+@app.route('/api/admin/question_bank/content', methods=['GET'])
+@admin_required
+def get_question_bank_content():
+    """加载题库内容（返回所有题目数组及统计信息）"""
+    try:
+        filename = request.args.get('filename', '').strip()
+        if not filename:
+            return jsonify({'success': False, 'message': '缺少filename参数'}), 400
+        
+        if not filename.endswith('.json'):
+            filename += '.json'
+        
+        file_path = os.path.abspath(os.path.join(PAPER_JSON_DIR, filename))
+        if not file_path.startswith(PAPER_JSON_DIR):
+            return jsonify({'success': False, 'message': '非法的文件路径'}), 400
+        
+        if not os.path.exists(file_path):
+            return jsonify({'success': False, 'message': f'题库文件不存在: {filename}'}), 404
+        
+        with open(file_path, 'r', encoding='utf-8') as f:
+            questions = json.load(f)
+        
+        total = len(questions)
+        stats = {}
+        for q in questions:
+            qtype = q.get('type', '未知')
+            stats[qtype] = stats.get(qtype, 0) + 1
+        
+        return jsonify({
+            'success': True,
+            'filename': filename,
+            'questions': questions,
+            'total': total,
+            'stats': stats
+        })
+        
+    except json.JSONDecodeError as e:
+        logger.error(f'题库文件格式错误 {filename}: {e}')
+        return jsonify({'success': False, 'message': f'题库文件格式错误: {str(e)}'}), 400
+    except Exception as e:
+        logger.error(f'加载题库内容失败: {e}')
+        return jsonify({'success': False, 'message': f'加载失败: {str(e)}'}), 500
+
+@app.route('/api/admin/question_bank/save', methods=['POST'])
+@admin_required
+def save_question_bank_content():
+    """保存题库内容"""
+    try:
+        data = request.get_json()
+        filename = data.get('filename', '').strip()
+        questions = data.get('questions')
+        
+        if not filename:
+            return jsonify({'success': False, 'message': '缺少filename参数'}), 400
+        
+        if questions is None or not isinstance(questions, list):
+            return jsonify({'success': False, 'message': '缺少questions参数或格式错误'}), 400
+        
+        if not filename.endswith('.json'):
+            filename += '.json'
+        
+        file_path = os.path.abspath(os.path.join(PAPER_JSON_DIR, filename))
+        if not file_path.startswith(PAPER_JSON_DIR):
+            return jsonify({'success': False, 'message': '非法的文件路径'}), 400
+        
+        for i, question in enumerate(questions):
+            if not isinstance(question, dict):
+                return jsonify({'success': False, 'message': f'第 {i+1} 道题目格式错误'}), 400
+            
+            if not question.get('content', '').strip():
+                return jsonify({'success': False, 'message': f'第 {i+1} 道题目内容为空'}), 400
+            
+            if not isinstance(question.get('correct_answer'), list) or len(question['correct_answer']) == 0:
+                return jsonify({'success': False, 'message': f'第 {i+1} 道题目答案格式错误'}), 400
+        
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(questions, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f'管理员 {session.get("username")} 保存了题库 {filename}，共 {len(questions)} 道题目')
+        return jsonify({
+            'success': True,
+            'message': f'题库保存成功，共 {len(questions)} 道题目',
+            'filename': filename,
+            'question_count': len(questions)
+        })
+        
+    except Exception as e:
+        logger.error(f'保存题库失败: {e}')
+        return jsonify({'success': False, 'message': f'保存失败: {str(e)}'}), 500
+
+@app.route('/api/admin/question_bank/ai_parse', methods=['POST'])
+@admin_required
+def ai_parse_question():
+    """AI解析单道题目（支持生成解析和生成答案两种模式）"""
+    try:
+        data = request.get_json()
+        question_content = data.get('content', '').strip()
+        options = data.get('options', [])
+        correct_answer = data.get('correct_answer', [])
+        question_type = data.get('type', 'single')
+        mode = data.get('mode', 'parse_analysis')
+        
+        if mode not in ('parse_analysis', 'parse_answer'):
+            return jsonify({'success': False, 'message': f'不支持的解析模式: {mode}'}), 400
+        
+        if not question_content:
+            return jsonify({'success': False, 'message': '题目内容为空'}), 400
+        
+        settings = load_settings()
+        agent_settings = settings.get('ai_agents', {}).get(QUESTION_ANALYSIS_AGENT_KEY, {})
+        provider_name = agent_settings.get('provider', 'deepseek')
+        provider_settings = settings.get('ai_providers', {}).get(provider_name, {})
+        
+        api_key = str(provider_settings.get('api_key', '')).strip()
+        if not api_key:
+            return jsonify({'success': False, 'message': '当前解析Agent未配置API Key，请在设置页保存'}), 400
+        
+        if mode == 'parse_analysis':
+            system_prompt = agent_settings.get('system_prompt', DEFAULT_QUESTION_ANALYSIS_PROMPT)
+            user_message = f"题目：{question_content}\n"
+            if options:
+                user_message += "选项：\n"
+                for opt in options:
+                    user_message += f"  {opt}\n"
+            if correct_answer:
+                if len(correct_answer) == 1:
+                    user_message += f"正确答案：{correct_answer[0]}"
+                else:
+                    user_message += "正确答案：\n"
+                    for ans in correct_answer:
+                        user_message += f"  {ans}\n"
+        else:
+            system_prompt = """# Role
+你是一位专业的考试题目答案生成专家。
+
+# Task
+根据题目内容、选项等信息，直接给出正确答案。
+
+# Requirements
+1. 仔细阅读题目内容和选项
+2. 分析题目要点和考点
+3. 直接给出正确答案
+4. 对于单选题，返回单个选项字母
+5. 对于多选题，返回多个选项字母（按字母顺序排列，用逗号分隔）
+6. 对于判断题，返回"正确"或"错误"
+7. 对于填空题，返回填空内容
+8. 对于简答题，返回简洁的答案要点
+
+# Output Format
+仅返回答案，不需要解释过程。"""
+            user_message = f"题目：{question_content}\n"
+            if options:
+                user_message += "选项：\n"
+                for opt in options:
+                    user_message += f"  {opt}\n"
+        
+        import re
+        ai_response = invoke_ai_completion(
+            provider_name,
+            provider_settings,
+            agent_settings,
+            api_key,
+            system_prompt,
+            user_message
+        )
+        
+        ai_response = ai_response.replace('**', '').replace('`', '').strip()
+        ai_response = re.sub(r'<([a-zA-Z][a-zA-Z0-9-]*)>', r'&lt;\1&gt;', ai_response)
+        ai_response = re.sub(r'</([a-zA-Z][a-zA-Z0-9-]*)>', r'&lt;/\1&gt;', ai_response)
+        
+        if not ai_response:
+            return jsonify({'success': False, 'message': 'AI返回结果为空'}), 500
+        
+        logger.info(f'管理员 {session.get("username")} 调用AI单题解析，模式={mode}，provider={provider_name}')
+        return jsonify({
+            'success': True,
+            'mode': mode,
+            'result': ai_response,
+            'provider': provider_name
+        })
+        
+    except Exception as e:
+        logger.error(f'AI单题解析失败: {e}')
+        return jsonify({'success': False, 'message': f'解析失败: {str(e)}'}), 500
+
+@app.route('/api/admin/question_bank/upload_image', methods=['POST'])
+@admin_required
+def upload_question_image():
+    """上传题目图片"""
+    try:
+        if 'image' not in request.files:
+            return jsonify({'success': False, 'message': '未找到上传文件'}), 400
+        
+        file = request.files['image']
+        if file.filename == '':
+            return jsonify({'success': False, 'message': '未选择文件'}), 400
+        
+        allowed_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'}
+        _, ext = os.path.splitext(file.filename)
+        if ext.lower() not in allowed_extensions:
+            return jsonify({'success': False, 'message': f'不支持的文件格式，仅支持: {", ".join(allowed_extensions)}'}), 400
+        
+        import uuid
+        image_dir = os.path.join(BASE_DIR, 'paper_json', 'image', 'editor_uploads')
+        os.makedirs(image_dir, exist_ok=True)
+        
+        new_filename = uuid.uuid4().hex + ext.lower()
+        image_path = os.path.join(image_dir, new_filename)
+        
+        file.save(image_path)
+        
+        relative_path = os.path.join('image', 'editor_uploads', new_filename)
+        
+        logger.info(f'管理员 {session.get("username")} 上传题目图片: {new_filename}')
+        return jsonify({
+            'success': True,
+            'image_url': '/api/question_image/' + relative_path.replace(os.sep, '/'),
+            'filename': new_filename
+        })
+        
+    except Exception as e:
+        logger.error(f'上传题目图片失败: {e}')
+        return jsonify({'success': False, 'message': f'上传失败: {str(e)}'}), 500
+
 @app.route('/api/admin/deepseek/stats', methods=['POST'])
 @admin_required
 def deepseek_stats():
     """获取题库统计信息"""
     try:
         data = request.get_json()
-        file_path = data.get('file_path', 'questions.json')
+        file_path = validate_file_path_input(data.get('file_path', 'questions.json'))
         
-        full_path = os.path.join(BASE_DIR, 'paper_json', file_path)
+        full_path = werkzeug_safe_join(PAPER_JSON_DIR, file_path)
+        if full_path is None:
+            return jsonify({'success': False, 'message': '非法文件路径'}), 400
         if not os.path.exists(full_path):
             return jsonify({'success': False, 'message': '题库文件不存在'}), 404
         
@@ -1845,6 +2597,8 @@ def deepseek_stats():
             'stats': stats
         })
         
+    except ValueError as e:
+        return jsonify({'success': False, 'message': str(e)}), 400
     except Exception as e:
         logger.error(f'获取题库统计失败: {e}')
         return jsonify({'success': False, 'message': f'获取统计失败: {str(e)}'}), 500
@@ -1988,7 +2742,10 @@ def get_available_files():
 def load_questions():
     """加载题库文件"""
     data = request.get_json()
-    file_path = data.get('file_path', 'questions.json')
+    try:
+        file_path = validate_file_path_input(data.get('file_path', 'questions.json'))
+    except ValueError as e:
+        return jsonify({'success': False, 'message': str(e)}), 400
     
     try:
         success = safe_manager.load_questions(file_path)
@@ -2469,16 +3226,39 @@ def serve_question_image(filename):
     # 返回文件
     return send_from_directory(os.path.dirname(image_path), os.path.basename(image_path))
 
+def _serve_html_with_nonce(filename, static_folder=None):
+    nonce = getattr(request, '_csp_nonce', '')
+    folder = static_folder or app.static_folder
+    filepath = os.path.join(folder, filename)
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            html = f.read()
+        html = html.replace('<script ', f'<script nonce="{nonce}" ')
+        html = html.replace('<script>', f'<script nonce="{nonce}">')
+        return Response(html, content_type='text/html; charset=utf-8')
+    except Exception as e:
+        logger.error(f'读取{filename}失败: {e}')
+        return send_from_directory(folder, filename)
+
 @app.route('/login')
 def login_page():
-    """返回登录页面（原index.html）"""
-    return send_from_directory(app.static_folder, 'index.html')
+    return _serve_html_with_nonce('index.html')
 
 @app.route('/')
 def index():
     """返回主页"""
     logger.info(f'用户访问主页 | IP: {request.remote_addr} | User-Agent: {request.headers.get("User-Agent", "Unknown")}')
-    return send_from_directory(app.static_folder, 'index.html')
+    return _serve_html_with_nonce('index.html')
+
+@app.route('/rag')
+def rag_page():
+    """返回RAG知识库页面"""
+    return _serve_html_with_nonce('rag.html')
+
+@app.route('/kb')
+def kb_page():
+    """返回知识库页面（RAG页面别名）"""
+    return _serve_html_with_nonce('rag.html')
 
 @app.errorhandler(404)
 def handle_404(e):
@@ -2522,17 +3302,18 @@ def format_file_size(size_bytes):
         return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
 
 def safe_join(*paths):
-    """安全地拼接路径，确保不超出FTP_ROOT_DIR"""
-    full_path = os.path.abspath(os.path.join(*paths))
-    root_path = os.path.abspath(FTP_ROOT_DIR)
-    if not full_path.startswith(root_path):
+    """安全地拼接路径，确保不超出FTP_ROOT_DIR，使用werkzeug安全路径验证"""
+    if len(paths) < 2:
         return None
-    return full_path
+    root_path = paths[0]
+    user_path = os.path.join(*paths[1:])
+    result = werkzeug_safe_join(root_path, user_path)
+    return result
 
 @app.route('/ftp')
 def serve_ftp_page():
     """提供FTP文件浏览页面"""
-    return send_from_directory(os.path.join(BASE_DIR, 'web'), 'ftp.html')
+    return _serve_html_with_nonce('ftp.html', static_folder=os.path.join(BASE_DIR, 'web'))
 
 @app.route('/ftp/list', methods=['GET'])
 def ftp_list_directory():
@@ -2763,13 +3544,13 @@ def ftp_search_files():
         query = request.args.get('q', '').strip()
         if not query:
             return jsonify({'success': False, 'message': '搜索关键词不能为空'}), 400
-        
+
         results = []
         query_lower = query.lower()
-        
+
         for root, dirs, files in os.walk(FTP_ROOT_DIR):
             dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS and not d.startswith('.')]
-            
+
             for file in files:
                 if file.lower().find(query_lower) != -1:
                     try:
@@ -2784,7 +3565,7 @@ def ftp_search_files():
                         })
                     except:
                         continue
-        
+
         results.sort(key=lambda x: x['name'].lower())
         return jsonify({
             'success': True,
@@ -2792,15 +3573,649 @@ def ftp_search_files():
             'results': results,
             'total': len(results)
         })
-        
+
     except Exception as e:
         logger.error(f'搜索文件失败: {e}')
         return jsonify({'success': False, 'message': f'搜索失败: {str(e)}'}), 500
+
+
+# ==================== RAG知识库API路由 ====================
+
+# 初始化RAG系统
+try:
+    rag_db, rag_kb_manager, rag_doc_processor, rag_retriever, rag_chat = create_rag_system()
+    logger.info('RAG系统初始化成功')
+except Exception as e:
+    logger.error(f'RAG系统初始化失败: {e}')
+    rag_db = rag_kb_manager = rag_doc_processor = rag_retriever = rag_chat = None
+
+# RAG文件上传配置
+RAG_UPLOAD_FOLDER = os.path.join(BASE_DIR, 'data', 'rag_uploads')
+RAG_ALLOWED_EXTENSIONS = {'pdf', 'docx', 'txt', 'md'}
+RAG_MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+
+os.makedirs(RAG_UPLOAD_FOLDER, exist_ok=True)
+
+
+def allowed_rag_file(filename):
+    """检查文件扩展名是否允许"""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in RAG_ALLOWED_EXTENSIONS
+
+
+# 1. 知识库管理API
+
+@app.route('/api/rag/knowledge-bases', methods=['POST'])
+@login_required
+def create_knowledge_base():
+    """创建知识库"""
+    try:
+        if not rag_kb_manager:
+            return jsonify({'success': False, 'message': 'RAG系统未初始化'}), 500
+
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': '请求数据不能为空'}), 400
+
+        name = data.get('name', '').strip()
+        description = data.get('description', '').strip()
+        embedding_provider = data.get('embedding_provider', 'deepseek')
+        embedding_model = data.get('embedding_model', '')
+        api_key = data.get('api_key', '')
+        chunk_size = data.get('chunk_size', 500)
+        chunk_overlap = data.get('chunk_overlap', 50)
+
+        if not name:
+            return jsonify({'success': False, 'message': '知识库名称不能为空'}), 400
+        if not embedding_model:
+            return jsonify({'success': False, 'message': '嵌入模型不能为空'}), 400
+
+        kb_id = rag_kb_manager.create_knowledge_base(
+            name=name,
+            description=description,
+            embedding_provider=embedding_provider,
+            embedding_model=embedding_model,
+            api_key=api_key,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap
+        )
+
+        if kb_id:
+            logger.info(f'用户 {session.get("username")} 创建知识库: {name} (ID: {kb_id})')
+            return jsonify({'success': True, 'message': '知识库创建成功', 'data': {'id': kb_id}})
+        else:
+            return jsonify({'success': False, 'message': '知识库名称已存在或创建失败'}), 400
+
+    except Exception as e:
+        logger.error(f'创建知识库失败: {e}')
+        return jsonify({'success': False, 'message': f'创建失败: {str(e)}'}), 500
+
+
+@app.route('/api/rag/knowledge-bases', methods=['GET'])
+@login_required
+def list_knowledge_bases():
+    """列出所有知识库"""
+    try:
+        if not rag_kb_manager:
+            return jsonify({'success': False, 'message': 'RAG系统未初始化'}), 500
+
+        kbs = rag_kb_manager.list_knowledge_bases()
+        data = []
+        for kb in kbs:
+            data.append({
+                'id': kb.id,
+                'name': kb.name,
+                'description': kb.description,
+                'embedding_provider': kb.embedding_provider,
+                'embedding_model': kb.embedding_model,
+                'chunk_size': kb.chunk_size,
+                'chunk_overlap': kb.chunk_overlap,
+                'created_at': kb.created_at,
+                'updated_at': kb.updated_at
+            })
+
+        return jsonify({'success': True, 'data': data})
+
+    except Exception as e:
+        logger.error(f'获取知识库列表失败: {e}')
+        return jsonify({'success': False, 'message': f'获取失败: {str(e)}'}), 500
+
+
+@app.route('/api/rag/knowledge-bases/<int:kb_id>', methods=['GET'])
+@login_required
+def get_knowledge_base(kb_id):
+    """获取知识库详情"""
+    try:
+        if not rag_kb_manager:
+            return jsonify({'success': False, 'message': 'RAG系统未初始化'}), 500
+
+        kb = rag_kb_manager.get_knowledge_base(kb_id)
+        if not kb:
+            return jsonify({'success': False, 'message': '知识库不存在'}), 404
+
+        data = {
+            'id': kb.id,
+            'name': kb.name,
+            'description': kb.description,
+            'embedding_provider': kb.embedding_provider,
+            'embedding_model': kb.embedding_model,
+            'chunk_size': kb.chunk_size,
+            'chunk_overlap': kb.chunk_overlap,
+            'created_at': kb.created_at,
+            'updated_at': kb.updated_at
+        }
+
+        return jsonify({'success': True, 'data': data})
+
+    except Exception as e:
+        logger.error(f'获取知识库详情失败: {e}')
+        return jsonify({'success': False, 'message': f'获取失败: {str(e)}'}), 500
+
+
+@app.route('/api/rag/knowledge-bases/<int:kb_id>', methods=['PUT'])
+@login_required
+def update_knowledge_base(kb_id):
+    """更新知识库"""
+    try:
+        if not rag_kb_manager:
+            return jsonify({'success': False, 'message': 'RAG系统未初始化'}), 500
+
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': '请求数据不能为空'}), 400
+
+        # 检查知识库是否存在
+        kb = rag_kb_manager.get_knowledge_base(kb_id)
+        if not kb:
+            return jsonify({'success': False, 'message': '知识库不存在'}), 404
+
+        # 允许的更新字段
+        allowed_fields = ['name', 'description', 'embedding_model', 'chunk_size', 'chunk_overlap']
+        updates = {k: v for k, v in data.items() if k in allowed_fields}
+
+        if not updates:
+            return jsonify({'success': False, 'message': '没有可更新的字段'}), 400
+
+        success = rag_kb_manager.update_knowledge_base(kb_id, **updates)
+
+        if success:
+            logger.info(f'用户 {session.get("username")} 更新知识库: ID={kb_id}')
+            return jsonify({'success': True, 'message': '知识库更新成功'})
+        else:
+            return jsonify({'success': False, 'message': '更新失败'}), 400
+
+    except Exception as e:
+        logger.error(f'更新知识库失败: {e}')
+        return jsonify({'success': False, 'message': f'更新失败: {str(e)}'}), 500
+
+
+@app.route('/api/rag/knowledge-bases/<int:kb_id>', methods=['DELETE'])
+@login_required
+def delete_knowledge_base(kb_id):
+    """删除知识库"""
+    try:
+        if not rag_kb_manager:
+            return jsonify({'success': False, 'message': 'RAG系统未初始化'}), 500
+
+        # 检查知识库是否存在
+        kb = rag_kb_manager.get_knowledge_base(kb_id)
+        if not kb:
+            return jsonify({'success': False, 'message': '知识库不存在'}), 404
+
+        success = rag_kb_manager.delete_knowledge_base(kb_id)
+
+        if success:
+            logger.info(f'用户 {session.get("username")} 删除知识库: ID={kb_id}')
+            return jsonify({'success': True, 'message': '知识库删除成功'})
+        else:
+            return jsonify({'success': False, 'message': '删除失败'}), 400
+
+    except Exception as e:
+        logger.error(f'删除知识库失败: {e}')
+        return jsonify({'success': False, 'message': f'删除失败: {str(e)}'}), 500
+
+
+# 2. 文档管理API
+
+@app.route('/api/rag/knowledge-bases/<int:kb_id>/documents', methods=['POST'])
+@login_required
+def upload_document(kb_id):
+    """上传文档到知识库"""
+    try:
+        if not rag_kb_manager or not rag_doc_processor:
+            return jsonify({'success': False, 'message': 'RAG系统未初始化'}), 500
+
+        # 检查知识库是否存在
+        kb = rag_kb_manager.get_knowledge_base(kb_id)
+        if not kb:
+            return jsonify({'success': False, 'message': '知识库不存在'}), 404
+
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'message': '未找到文件'}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'success': False, 'message': '文件名不能为空'}), 400
+
+        if not allowed_rag_file(file.filename):
+            return jsonify({'success': False, 'message': '不支持的文件类型，仅允许: pdf, docx, txt, md'}), 400
+
+        # 检查文件大小
+        file.seek(0, os.SEEK_END)
+        file_size = file.tell()
+        file.seek(0)
+
+        if file_size > RAG_MAX_FILE_SIZE:
+            return jsonify({'success': False, 'message': f'文件大小超过限制 (最大 {RAG_MAX_FILE_SIZE // (1024 * 1024)}MB)'}), 400
+
+        # 保存文件
+        filename = f"{kb_id}_{int(time.time())}_{file.filename}"
+        file_path = os.path.join(RAG_UPLOAD_FOLDER, filename)
+        file.save(file_path)
+
+        # 处理文档（异步处理，先返回文档ID）
+        doc_id = rag_doc_processor.add_document(kb_id, file_path)
+
+        if doc_id:
+            logger.info(f'用户 {session.get("username")} 上传文档到知识库 {kb_id}: {file.filename} (ID: {doc_id})')
+            return jsonify({
+                'success': True,
+                'message': '文档上传成功，正在处理中',
+                'data': {'id': doc_id, 'status': 'processing'}
+            })
+        else:
+            # 删除上传的文件
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            return jsonify({'success': False, 'message': '文档处理失败'}), 500
+
+    except Exception as e:
+        logger.error(f'上传文档失败: {e}')
+        return jsonify({'success': False, 'message': f'上传失败: {str(e)}'}), 500
+
+
+@app.route('/api/rag/knowledge-bases/<int:kb_id>/documents', methods=['GET'])
+@login_required
+def list_documents(kb_id):
+    """列出知识库的所有文档"""
+    try:
+        if not rag_kb_manager or not rag_doc_processor:
+            return jsonify({'success': False, 'message': 'RAG系统未初始化'}), 500
+
+        # 检查知识库是否存在
+        kb = rag_kb_manager.get_knowledge_base(kb_id)
+        if not kb:
+            return jsonify({'success': False, 'message': '知识库不存在'}), 404
+
+        docs = rag_doc_processor.list_documents(kb_id)
+        data = []
+        for doc in docs:
+            data.append({
+                'id': doc.id,
+                'kb_id': doc.kb_id,
+                'filename': doc.filename,
+                'file_type': doc.file_type,
+                'file_size': doc.file_size,
+                'status': doc.status,
+                'error_message': doc.error_message,
+                'created_at': doc.created_at,
+                'updated_at': doc.updated_at
+            })
+
+        return jsonify({'success': True, 'data': data})
+
+    except Exception as e:
+        logger.error(f'获取文档列表失败: {e}')
+        return jsonify({'success': False, 'message': f'获取失败: {str(e)}'}), 500
+
+
+@app.route('/api/rag/documents/<int:doc_id>', methods=['GET'])
+@login_required
+def get_document(doc_id):
+    """获取文档详情"""
+    try:
+        if not rag_doc_processor:
+            return jsonify({'success': False, 'message': 'RAG系统未初始化'}), 500
+
+        stats = rag_doc_processor.get_document_stats(doc_id)
+        if not stats:
+            return jsonify({'success': False, 'message': '文档不存在'}), 404
+
+        doc = stats['document']
+        data = {
+            'id': doc['id'],
+            'kb_id': doc['kb_id'],
+            'filename': doc['filename'],
+            'file_type': doc['file_type'],
+            'file_size': doc['file_size'],
+            'status': doc['status'],
+            'error_message': doc['error_message'],
+            'chunks_count': stats['chunks_count'],
+            'total_tokens': stats['total_tokens'],
+            'created_at': doc['created_at'],
+            'updated_at': doc['updated_at']
+        }
+
+        return jsonify({'success': True, 'data': data})
+
+    except Exception as e:
+        logger.error(f'获取文档详情失败: {e}')
+        return jsonify({'success': False, 'message': f'获取失败: {str(e)}'}), 500
+
+
+@app.route('/api/rag/documents/<int:doc_id>', methods=['DELETE'])
+@login_required
+def delete_document(doc_id):
+    """删除文档"""
+    try:
+        if not rag_doc_processor:
+            return jsonify({'success': False, 'message': 'RAG系统未初始化'}), 500
+
+        # 检查文档是否存在
+        stats = rag_doc_processor.get_document_stats(doc_id)
+        if not stats:
+            return jsonify({'success': False, 'message': '文档不存在'}), 404
+
+        success = rag_doc_processor.delete_document(doc_id)
+
+        if success:
+            logger.info(f'用户 {session.get("username")} 删除文档: ID={doc_id}')
+            return jsonify({'success': True, 'message': '文档删除成功'})
+        else:
+            return jsonify({'success': False, 'message': '删除失败'}), 400
+
+    except Exception as e:
+        logger.error(f'删除文档失败: {e}')
+        return jsonify({'success': False, 'message': f'删除失败: {str(e)}'}), 500
+
+
+@app.route('/api/rag/documents/<int:doc_id>/status', methods=['GET'])
+@login_required
+def get_document_status(doc_id):
+    """查询文档处理状态"""
+    try:
+        if not rag_doc_processor:
+            return jsonify({'success': False, 'message': 'RAG系统未初始化'}), 500
+
+        stats = rag_doc_processor.get_document_stats(doc_id)
+        if not stats:
+            return jsonify({'success': False, 'message': '文档不存在'}), 404
+
+        doc = stats['document']
+        data = {
+            'id': doc['id'],
+            'status': doc['status'],
+            'error_message': doc['error_message'],
+            'chunks_count': stats['chunks_count'],
+            'total_tokens': stats['total_tokens'],
+            'updated_at': doc['updated_at']
+        }
+
+        return jsonify({'success': True, 'data': data})
+
+    except Exception as e:
+        logger.error(f'获取文档状态失败: {e}')
+        return jsonify({'success': False, 'message': f'获取失败: {str(e)}'}), 500
+
+
+# 3. RAG检索与对话API
+
+@app.route('/api/rag/knowledge-bases/<int:kb_id>/search', methods=['POST'])
+@login_required
+def search_knowledge_base(kb_id):
+    """向量检索知识库"""
+    try:
+        if not rag_kb_manager or not rag_retriever:
+            return jsonify({'success': False, 'message': 'RAG系统未初始化'}), 500
+
+        # 检查知识库是否存在
+        kb = rag_kb_manager.get_knowledge_base(kb_id)
+        if not kb:
+            return jsonify({'success': False, 'message': '知识库不存在'}), 404
+
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': '请求数据不能为空'}), 400
+
+        query = data.get('query', '').strip()
+        top_k = data.get('top_k', 5)
+        min_score = data.get('min_score', 0.0)
+
+        if not query:
+            return jsonify({'success': False, 'message': '查询内容不能为空'}), 400
+
+        # 获取API密钥
+        api_key = rag_kb_manager.get_api_key(kb_id)
+        if not api_key:
+            return jsonify({'success': False, 'message': '知识库未配置API密钥'}), 400
+
+        # 创建嵌入客户端
+        embedding_client = EmbeddingClient(
+            kb.embedding_provider,
+            api_key,
+            kb.embedding_model
+        )
+
+        # 获取查询向量
+        query_embedding = embedding_client.embed_query(query)
+
+        # 执行检索
+        results = rag_retriever.retrieve(kb_id, query_embedding, top_k=top_k, min_score=min_score)
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'query': query,
+                'results': results,
+                'total': len(results)
+            }
+        })
+
+    except Exception as e:
+        logger.error(f'向量检索失败: {e}')
+        return jsonify({'success': False, 'message': f'检索失败: {str(e)}'}), 500
+
+
+@app.route('/api/rag/knowledge-bases/<int:kb_id>/query', methods=['POST'])
+@login_required
+def query_knowledge_base(kb_id):
+    """RAG问答（非流式）"""
+    try:
+        if not rag_kb_manager or not rag_chat:
+            return jsonify({'success': False, 'message': 'RAG系统未初始化'}), 500
+
+        # 检查知识库是否存在
+        kb = rag_kb_manager.get_knowledge_base(kb_id)
+        if not kb:
+            return jsonify({'success': False, 'message': '知识库不存在'}), 404
+
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': '请求数据不能为空'}), 400
+
+        query = data.get('query', '').strip()
+        conversation_history = data.get('conversation_history', [])
+        top_k = data.get('top_k', 5)
+
+        if not query:
+            return jsonify({'success': False, 'message': '查询内容不能为空'}), 400
+
+        # 执行RAG对话
+        answer = rag_chat.chat(
+            kb_id=kb_id,
+            query=query,
+            conversation_history=conversation_history,
+            top_k=top_k,
+            stream=False
+        )
+
+        logger.info(f'用户 {session.get("username")} 在知识库 {kb_id} 执行RAG查询')
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'query': query,
+                'answer': answer
+            }
+        })
+
+    except Exception as e:
+        logger.error(f'RAG问答失败: {e}')
+        return jsonify({'success': False, 'message': f'问答失败: {str(e)}'}), 500
+
+
+@app.route('/api/rag/knowledge-bases/<int:kb_id>/query/stream', methods=['POST'])
+@login_required
+def query_knowledge_base_stream(kb_id):
+    """RAG问答（流式SSE）"""
+    try:
+        if not rag_kb_manager or not rag_chat:
+            return jsonify({'success': False, 'message': 'RAG系统未初始化'}), 500
+
+        # 检查知识库是否存在
+        kb = rag_kb_manager.get_knowledge_base(kb_id)
+        if not kb:
+            return jsonify({'success': False, 'message': '知识库不存在'}), 404
+
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': '请求数据不能为空'}), 400
+
+        query = data.get('query', '').strip()
+        conversation_history = data.get('conversation_history', [])
+        top_k = data.get('top_k', 5)
+
+        if not query:
+            return jsonify({'success': False, 'message': '查询内容不能为空'}), 400
+
+        def generate():
+            try:
+                for chunk in rag_chat.chat(
+                    kb_id=kb_id,
+                    query=query,
+                    conversation_history=conversation_history,
+                    top_k=top_k,
+                    stream=True
+                ):
+                    yield f"data: {json.dumps({'content': chunk})}\n\n"
+                yield f"data: {json.dumps({'done': True})}\n\n"
+            except Exception as e:
+                logger.error(f'流式RAG问答失败: {e}')
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+        logger.info(f'用户 {session.get("username")} 在知识库 {kb_id} 执行流式RAG查询')
+
+        return Response(
+            stream_with_context(generate()),
+            mimetype='text/event-stream',
+            headers={
+                'Cache-Control': 'no-cache',
+                'X-Accel-Buffering': 'no'
+            }
+        )
+
+    except Exception as e:
+        logger.error(f'流式RAG问答失败: {e}')
+        return jsonify({'success': False, 'message': f'问答失败: {str(e)}'}), 500
+
+
+@app.route('/api/admin/trash', methods=['GET'])
+@admin_required
+def get_trash_items():
+    """获取回收站中的所有项目"""
+    try:
+        items = file_router.get_trash_items(FilePermission.ADMIN)
+        return jsonify({
+            'success': True,
+            'items': [
+                {
+                    'trash_id': item.trash_id,
+                    'original_path': item.original_path,
+                    'deleted_at': item.deleted_at,
+                    'expires_at': item.expires_at,
+                    'file_size': item.file_size,
+                    'deleted_by': item.deleted_by
+                }
+                for item in items
+            ]
+        })
+    except Exception as e:
+        logger.error(f'获取回收站列表失败: {e}')
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/admin/trash/restore', methods=['POST'])
+@admin_required
+def restore_from_trash():
+    """从回收站恢复文件"""
+    try:
+        data = request.get_json()
+        trash_id = data.get('trash_id', '').strip()
+
+        if not trash_id:
+            return jsonify({'success': False, 'message': '缺少trash_id参数'}), 400
+
+        username = session.get('username', 'unknown')
+        result = file_router.restore_from_trash(
+            trash_id,
+            FilePermission.ADMIN,
+            user_context=username
+        )
+
+        if result:
+            logger.info(f'管理员 {username} 恢复了文件 (ID: {trash_id})')
+            return jsonify({'success': True, 'message': '文件恢复成功'})
+        else:
+            return jsonify({'success': False, 'message': '文件恢复失败'}), 500
+
+    except Exception as e:
+        logger.error(f'恢复文件失败: {e}')
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/admin/trash/clear', methods=['POST'])
+@admin_required
+def clear_trash():
+    """清空回收站（永久删除所有文件）"""
+    try:
+        trash_manager = create_trash_manager()
+        items = trash_manager.get_trash_items()
+
+        deleted_count = 0
+        for item in items:
+            if trash_manager.permanent_delete(item.trash_id):
+                deleted_count += 1
+
+        username = session.get('username', 'unknown')
+        logger.info(f'管理员 {username} 清空了回收站，永久删除了 {deleted_count} 个文件')
+
+        return jsonify({
+            'success': True,
+            'message': f'回收站已清空，共删除 {deleted_count} 个文件'
+        })
+    except Exception as e:
+        logger.error(f'清空回收站失败: {e}')
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/admin/file-audit-logs', methods=['GET'])
+@admin_required
+def get_file_audit_logs():
+    """获取文件操作审计日志"""
+    try:
+        days = request.args.get('days', 7, type=int)
+        audit_logger = get_file_audit_logger()
+        logs = audit_logger.get_recent_logs(days=days)
+
+        return jsonify({
+            'success': True,
+            'logs': logs
+        })
+    except Exception as e:
+        logger.error(f'获取文件审计日志失败: {e}')
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 
 if __name__ == '__main__':
     # 确保web目录存在
     if not os.path.exists(os.path.join(BASE_DIR, 'web')):
         os.makedirs(os.path.join(BASE_DIR, 'web'))
-    
+
     # 在0.0.0.0上运行，允许局域网访问
     app.run(host='0.0.0.0', port=5000, debug=False)  # 生产环境应关闭debug

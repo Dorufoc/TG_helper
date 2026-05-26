@@ -1,0 +1,123 @@
+/* ========================================
+   Login & Access Denied Styles
+   Material Design 3 Authentication Pages
+   ======================================== */
+
+/* ========================================
+   Login Styles
+   ======================================== */
+.login-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: var(--md-sys-spacing-xl);
+    background: transparent;
+}
+
+.login-card {
+    background-color: var(--md-sys-color-surface-container-low);
+    padding: var(--md-sys-spacing-3xl);
+    border-radius: var(--md-sys-shape-corner-large);
+    box-shadow: none;
+    max-width: 450px;
+    width: 100%;
+    border: 1px solid var(--md-sys-color-outline-variant);
+    animation: md3-fade-in-up 0.4s var(--md-sys-motion-easing-standard-decelerate);
+}
+
+.login-card-header {
+    text-align: center;
+    margin-bottom: var(--md-sys-spacing-2xl);
+}
+
+.login-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: var(--md-sys-shape-corner-full);
+    background-color: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-on-primary-container);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto var(--md-sys-spacing-lg);
+}
+
+.login-card-header h1 {
+    font-size: var(--md-sys-typescale-headline-medium-size);
+    color: var(--md-sys-color-on-surface);
+    margin-bottom: var(--md-sys-spacing-sm);
+    letter-spacing: -0.02em;
+    text-align: center;
+}
+
+.login-subtitle {
+    font-size: var(--md-sys-typescale-body-large-size);
+    color: var(--md-sys-color-on-surface-variant);
+    margin: 0;
+}
+
+.captcha-row {
+    display: flex;
+    gap: var(--md-sys-spacing-md);
+    align-items: center;
+}
+
+.captcha-row input {
+    flex: 1;
+}
+
+.captcha-img {
+    height: 44px;
+    border-radius: var(--md-sys-shape-corner-small);
+    cursor: pointer;
+    border: 1px solid var(--md-sys-color-outline-variant);
+    transition: transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+}
+
+.captcha-img:hover {
+    transform: scale(1.05);
+}
+
+.captcha-img:active {
+    transform: scale(0.95);
+}
+
+/* ========================================
+   Access Denied
+   ======================================== */
+.access-denied {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 80vh;
+    text-align: center;
+    padding: var(--md-sys-spacing-3xl);
+}
+
+.access-denied-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--md-sys-spacing-lg);
+}
+
+.access-denied-content svg {
+    color: var(--md-sys-color-error);
+    opacity: 0.8;
+}
+
+.access-denied h1 {
+    font-size: var(--md-sys-typescale-display-medium-size);
+    color: var(--md-sys-color-error);
+    margin: 0;
+    font-weight: 700;
+    text-align: center;
+}
+
+.access-denied p {
+    font-size: var(--md-sys-typescale-body-large-size);
+    color: var(--md-sys-color-on-surface-variant);
+    margin: 0;
+}

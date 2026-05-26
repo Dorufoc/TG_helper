@@ -1,0 +1,41 @@
+/* ========================================
+   Animations & Keyframes
+   ======================================== */
+@keyframes md3-slide-in-right {
+    from {
+        opacity: 0;
+        transform: translateX(100px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Staggered animation for question list */
+.wrong-question-item:nth-child(1) { animation-delay: 0s; }
+.wrong-question-item:nth-child(2) { animation-delay: 0.05s; }
+.wrong-question-item:nth-child(3) { animation-delay: 0.1s; }
+.wrong-question-item:nth-child(4) { animation-delay: 0.15s; }
+.wrong-question-item:nth-child(5) { animation-delay: 0.2s; }
+.wrong-question-item:nth-child(n+6) { animation-delay: 0.25s; }
+
+/* Expand/Collapse transition */
+.expand-enter-active,
+.expand-leave-active {
+    transition: all var(--md-sys-motion-duration-medium3) var(--md-sys-motion-easing-standard);
+    overflow: hidden;
+}
+
+.expand-enter-from,
+.expand-leave-to {
+    opacity: 0;
+    max-height: 0;
+    margin-top: 0;
+}
+
+.expand-enter-to,
+.expand-leave-from {
+    opacity: 1;
+    max-height: 300px;
+}

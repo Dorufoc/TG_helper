@@ -10,3 +10,7 @@ paper*/
 browser_data
 ftp
 settings.json
+.venv
+.*
+*.db
+users.json

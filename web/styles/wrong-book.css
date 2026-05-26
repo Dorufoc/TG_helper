@@ -1,0 +1,149 @@
+/* ========================================
+   Wrong Books Section
+   ======================================== */
+.wrong-books-section {
+    margin-top: var(--md-sys-spacing-lg);
+}
+
+.wrong-books-header {
+    display: flex;
+    align-items: center;
+    gap: var(--md-sys-spacing-md);
+    padding: var(--md-sys-spacing-md) var(--md-sys-spacing-lg);
+    cursor: pointer;
+    user-select: none;
+    border-radius: var(--md-sys-shape-corner-medium);
+    transition: background-color var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+}
+
+.wrong-books-header:hover {
+    background-color: color-mix(in srgb, var(--md-sys-color-primary) 8%, var(--md-sys-color-surface));
+}
+
+.wrong-books-icon {
+    display: flex;
+    align-items: center;
+    color: var(--md-sys-color-primary);
+}
+
+.wrong-books-title {
+    flex: 1;
+    font-size: var(--md-sys-typescale-body-large-size);
+    font-weight: var(--md-sys-typescale-body-large-weight);
+    color: var(--md-sys-color-on-surface);
+}
+
+.wrong-books-arrow {
+    transition: transform var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+    color: var(--md-sys-color-on-surface-variant);
+}
+
+.wrong-books-arrow.rotated {
+    transform: rotate(180deg);
+}
+
+.wrong-books-list {
+    margin-top: var(--md-sys-spacing-sm);
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--md-sys-shape-corner-medium);
+    background-color: var(--md-sys-color-surface-container-low);
+}
+
+.wrong-book-item {
+    display: flex;
+    align-items: center;
+    gap: var(--md-sys-spacing-md);
+    padding: var(--md-sys-spacing-md) var(--md-sys-spacing-lg);
+    cursor: pointer;
+    transition: all var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.wrong-book-item:last-child {
+    border-bottom: none;
+}
+
+.wrong-book-item:hover {
+    background-color: color-mix(in srgb, var(--md-sys-color-primary) 6%, var(--md-sys-color-surface-container-low));
+}
+
+.wrong-book-icon {
+    font-size: var(--md-sys-typescale-headline-medium-size);
+    flex-shrink: 0;
+    opacity: 0.7;
+}
+
+.wrong-book-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--md-sys-spacing-xs);
+}
+
+.wrong-book-title {
+    font-size: var(--md-sys-typescale-body-medium-size);
+    color: var(--md-sys-color-on-surface);
+    font-weight: var(--md-sys-typescale-body-medium-weight);
+}
+
+.wrong-book-meta {
+    font-size: var(--md-sys-typescale-body-small-size);
+    color: var(--md-sys-color-on-surface-variant);
+}
+
+.delete-book-btn {
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
+    min-height: 48px;
+    padding: 0;
+    margin: 0;
+    border-radius: 50%;
+    background-color: transparent;
+    color: var(--md-sys-color-on-surface-variant);
+    flex-shrink: 0;
+}
+
+.delete-book-btn:hover {
+    background-color: color-mix(in srgb, var(--md-sys-color-error) 8%, transparent);
+    color: var(--md-sys-color-error);
+}
+
+.delete-book-btn:active {
+    background-color: color-mix(in srgb, var(--md-sys-color-error) 12%, transparent);
+    transform: scale(0.95);
+}
+
+body.dark-mode .delete-book-btn {
+    background-color: var(--md-sys-color-surface-container-highest);
+}
+
+body.dark-mode .delete-book-btn:hover {
+    background-color: color-mix(in srgb, var(--md-sys-color-error) 12%, var(--md-sys-color-surface-container-highest));
+    color: var(--md-sys-color-error);
+}
+
+@media (max-width: 768px) {
+    .delete-book-btn {
+        width: 44px;
+        height: 44px;
+        min-width: 44px;
+        min-height: 44px;
+    }
+}
+
+@media (max-width: 480px) {
+    .delete-book-btn {
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+        min-height: 40px;
+    }
+
+    .delete-book-btn svg {
+        width: 18px;
+        height: 18px;
+    }
+}

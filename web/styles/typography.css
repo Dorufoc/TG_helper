@@ -1,0 +1,41 @@
+/* ========================================
+   Typography
+   ======================================== */
+h1 {
+    font-size: var(--md-sys-typescale-headline-medium-size);
+    line-height: var(--md-sys-typescale-headline-medium-line-height);
+    font-weight: var(--md-sys-typescale-headline-medium-weight);
+    text-align: center;
+    margin-bottom: var(--md-sys-spacing-2xl);
+    color: var(--md-sys-color-on-surface);
+    letter-spacing: -0.02em;
+}
+
+h2 {
+    font-size: var(--md-sys-typescale-title-large-size);
+    line-height: var(--md-sys-typescale-title-large-line-height);
+    font-weight: var(--md-sys-typescale-title-large-weight);
+    margin-bottom: var(--md-sys-spacing-lg);
+    color: var(--md-sys-color-on-surface);
+}
+
+h3 {
+    font-size: var(--md-sys-typescale-title-medium-size);
+    line-height: var(--md-sys-typescale-title-medium-line-height);
+    font-weight: var(--md-sys-typescale-title-medium-weight);
+    margin-bottom: var(--md-sys-spacing-md);
+    color: var(--md-sys-color-on-surface-variant);
+}
+
+p {
+    margin-bottom: var(--md-sys-spacing-md);
+    color: var(--md-sys-color-on-surface);
+}
+
+label {
+    font-size: var(--md-sys-typescale-body-medium-size);
+    line-height: var(--md-sys-typescale-body-medium-line-height);
+    font-weight: var(--md-sys-typescale-body-medium-weight);
+    color: var(--md-sys-color-on-surface-variant);
+    letter-spacing: 0.01em;
+}

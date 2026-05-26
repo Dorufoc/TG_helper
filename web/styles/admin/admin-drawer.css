@@ -1,0 +1,153 @@
+/* ========================================
+   Navigation Drawer - MD3 Style
+   Material Design 3 Navigation Drawer
+   ======================================== */
+
+/* Navigation Drawer Base */
+.drawer {
+    width: 280px;
+    height: 100vh;
+    position: fixed;
+    top: 0;
+    left: 0;
+    background-color: var(--md-sys-color-surface-container-low);
+    border-right: 1px solid var(--md-sys-color-outline-variant);
+    display: flex;
+    flex-direction: column;
+    z-index: 100;
+    transition: transform var(--md-sys-motion-duration-medium3) var(--md-sys-motion-easing-standard);
+    transform: translateX(0);
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* Desktop: Collapsed Drawer - Slide out */
+.drawer.collapsed {
+    transform: translateX(-100%);
+}
+
+/* Main content needs left padding to account for fixed drawer */
+.main-content {
+    margin-left: 280px;
+    transition: margin-left var(--md-sys-motion-duration-medium3) var(--md-sys-motion-easing-standard);
+}
+
+/* When drawer is collapsed, main content expands */
+.drawer.collapsed ~ .main-content {
+    margin-left: 0;
+}
+
+/* When drawer is collapsed, top bar expands */
+.drawer.collapsed ~ .main-content .top-app-bar {
+    left: 0;
+}
+
+/* When drawer is collapsed, ensure content stays centered */
+.drawer.collapsed ~ .main-content .tab-content {
+    margin: 0 auto;
+}
+
+/* Drawer Header */
+.drawer-header {
+    padding: var(--md-sys-spacing-xl);
+    display: flex;
+    align-items: center;
+    gap: var(--md-sys-spacing-md);
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.drawer-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--md-sys-shape-corner-full);
+    background-color: var(--md-sys-color-primary-container);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--md-sys-color-on-primary-container);
+    flex-shrink: 0;
+}
+
+.drawer-user-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.drawer-username {
+    font-size: var(--md-sys-typescale-title-medium-size);
+    font-weight: var(--md-sys-typescale-title-medium-weight);
+    color: var(--md-sys-color-on-surface);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.drawer-role {
+    font-size: var(--md-sys-typescale-body-small-size);
+    color: var(--md-sys-color-on-primary-container);
+    padding: 2px 8px;
+    background-color: var(--md-sys-color-primary-container);
+    border-radius: var(--md-sys-shape-corner-full);
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    font-weight: var(--md-sys-typescale-label-medium-weight);
+}
+
+/* Drawer Navigation */
+.drawer-nav {
+    flex: 1;
+    padding: var(--md-sys-spacing-md);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: var(--md-sys-spacing-md);
+    padding: var(--md-sys-spacing-md) var(--md-sys-spacing-lg);
+    background: none;
+    color: var(--md-sys-color-on-surface-variant);
+    width: 100%;
+    text-align: left;
+    justify-content: flex-start;
+    box-sizing: border-box;
+}
+
+.nav-item:hover {
+    color: var(--md-sys-color-on-surface);
+}
+
+.nav-item.active {
+    background-color: var(--md-sys-color-secondary-container);
+    color: var(--md-sys-color-on-secondary-container);
+}
+
+.nav-item svg {
+    flex-shrink: 0;
+}
+
+/* Drawer Footer */
+.drawer-footer {
+    padding: var(--md-sys-spacing-md);
+    border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+
+/* Drawer Backdrop */
+.drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.4);
+    z-index: 99;
+    animation: md3-fade-in 0.2s var(--md-sys-motion-easing-standard);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+}
+
+body.dark-mode .drawer-backdrop {
+    background-color: rgba(0, 0, 0, 0.6);
+}

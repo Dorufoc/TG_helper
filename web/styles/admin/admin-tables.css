@@ -1,0 +1,232 @@
+/* ========================================
+   Users Table - MD3 Single Row Layout
+   Material Design 3 Data Table
+   ======================================== */
+
+.users-table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: var(--md-sys-shape-corner-large);
+}
+
+.users-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.users-table th {
+    background-color: var(--md-sys-color-surface-container);
+    padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-lg);
+    text-align: left;
+    font-size: var(--md-sys-typescale-label-small-size);
+    font-weight: var(--md-sys-typescale-label-large-weight);
+    color: var(--md-sys-color-on-surface-variant);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 2px solid var(--md-sys-color-outline-variant);
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    height: 44px;
+    line-height: 28px;
+}
+
+.users-table th:nth-child(1),
+.users-table td:nth-child(1) { width: 15%; min-width: 100px; }
+
+.users-table th:nth-child(2),
+.users-table td:nth-child(2) { width: 18%; min-width: 130px; }
+
+.users-table th:nth-child(3),
+.users-table td:nth-child(3) { width: 15%; min-width: 120px; }
+
+.users-table th:nth-child(4),
+.users-table td:nth-child(4) { width: 12%; min-width: 90px; }
+
+.users-table th:nth-child(5),
+.users-table td:nth-child(5) { width: 18%; min-width: 140px; }
+
+.users-table th:nth-child(6),
+.users-table td:nth-child(6) { width: 22%; min-width: 160px; }
+
+.users-table td {
+    padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-lg);
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+    font-size: var(--md-sys-typescale-body-medium-size);
+    vertical-align: middle;
+    height: 48px;
+    line-height: 32px;
+}
+
+.users-table tbody tr {
+    transition: background-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+}
+
+.users-table tbody tr:hover {
+    background-color: color-mix(in srgb, var(--md-sys-color-primary) 5%, transparent);
+}
+
+.users-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.banned-row {
+    background-color: color-mix(in srgb, var(--md-sys-color-error) 4%, transparent);
+}
+
+.banned-row:hover {
+    background-color: color-mix(in srgb, var(--md-sys-color-error) 8%, transparent);
+}
+
+.username-cell {
+    font-weight: var(--md-sys-typescale-title-medium-weight);
+    color: var(--md-sys-color-on-surface);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.password-cell,
+.code-cell {
+    font-family: 'Consolas', 'Monaco', 'SF Mono', monospace;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.password-cell .password-mask,
+.password-cell .password-plain,
+.code-cell .code-text {
+    font-size: var(--md-sys-typescale-body-small-size);
+    letter-spacing: 0.02em;
+    display: inline;
+    vertical-align: middle;
+}
+
+.password-cell .icon-btn-small,
+.code-cell .icon-btn-small {
+    display: inline-flex;
+    vertical-align: middle;
+    margin-left: var(--md-sys-spacing-xs);
+}
+
+.password-plain {
+    color: var(--md-sys-color-on-surface);
+}
+
+.password-mask {
+    color: var(--md-sys-color-on-surface-variant);
+    letter-spacing: 0.15em;
+}
+
+.role-cell select {
+    padding: 4px 8px;
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: var(--md-sys-shape-corner-extra-small);
+    background-color: var(--md-sys-color-surface-container-lowest);
+    font-size: var(--md-sys-typescale-label-medium-size);
+    cursor: pointer;
+    color: var(--md-sys-color-on-surface);
+    transition: all var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+    font-family: inherit;
+    width: 100px;
+    max-width: 100%;
+    height: 28px;
+    line-height: 20px;
+}
+
+.role-cell select:focus {
+    border-color: var(--md-sys-color-primary);
+    outline: 2px solid var(--md-sys-color-primary);
+    outline-offset: 1px;
+}
+
+.role-cell select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.role-cell select.banned-role {
+    border-color: var(--md-sys-color-error);
+    background-color: color-mix(in srgb, var(--md-sys-color-error) 8%, var(--md-sys-color-surface-container-lowest));
+}
+
+.time-cell {
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: var(--md-sys-typescale-body-small-size);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: var(--md-sys-spacing-sm);
+}
+
+.status-cell {
+    white-space: nowrap;
+}
+
+.status-cell .status-indicator {
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 6px;
+}
+
+.status-cell .status-text {
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.status-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.status-indicator.online {
+    background-color: #4caf50;
+    box-shadow: 0 0 6px rgba(76, 175, 80, 0.6);
+    animation: pulse-online 2s ease-in-out infinite;
+}
+
+.status-indicator.offline {
+    background-color: var(--md-sys-color-on-surface-variant);
+    opacity: 0.4;
+}
+
+.status-text {
+    font-size: var(--md-sys-typescale-body-small-size);
+    color: var(--md-sys-color-on-surface);
+    white-space: nowrap;
+}
+
+@keyframes pulse-online {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+.action-cell,
+.actions-cell {
+    display: flex;
+    gap: var(--md-sys-spacing-xs);
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+.action-cell .btn-small,
+.actions-cell .btn-small {
+    padding: 6px 12px;
+    min-height: 32px;
+    font-size: var(--md-sys-typescale-label-medium-size);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.action-cell .btn-tonal,
+.actions-cell .btn-tonal {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

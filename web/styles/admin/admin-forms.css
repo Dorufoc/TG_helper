@@ -1,0 +1,72 @@
+/* ========================================
+   Forms - Admin Backend
+   Input Wrapper, Form Groups, Admin-specific Forms
+   ======================================== */
+
+/* ========================================
+   Input Wrapper
+   ======================================== */
+.input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.input-icon {
+    position: absolute;
+    left: var(--md-sys-spacing-md);
+    color: var(--md-sys-color-on-surface-variant);
+    pointer-events: none;
+}
+
+.input-wrapper input {
+    padding-left: calc(var(--md-sys-spacing-md) + 20px + var(--md-sys-spacing-sm));
+}
+
+.input-wrapper input,
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: var(--md-sys-spacing-md) var(--md-sys-spacing-lg);
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: var(--md-sys-shape-corner-medium);
+    background-color: var(--md-sys-color-surface-container-low);
+    color: var(--md-sys-color-on-surface);
+    font-size: var(--md-sys-typescale-body-large-size);
+    transition: all var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard);
+    outline: none;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+.input-wrapper input:focus,
+.form-group input:focus,
+.form-group select:focus {
+    border-color: var(--md-sys-color-primary);
+    background-color: var(--md-sys-color-surface-container-low);
+    box-shadow: 0 0 0 3px rgba(var(--md-sys-color-primary-rgb), 0.12);
+}
+
+.input-wrapper input:disabled,
+.form-group input:disabled,
+.form-group select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.form-group {
+    margin-bottom: var(--md-sys-spacing-lg);
+}
+
+.form-group:last-child {
+    margin-bottom: 0;
+}
+
+.form-group label {
+    font-size: var(--md-sys-typescale-label-large-size);
+    color: var(--md-sys-color-on-surface-variant);
+    margin-bottom: var(--md-sys-spacing-sm);
+    display: block;
+    font-weight: var(--md-sys-typescale-label-large-weight);
+    letter-spacing: 0.1px;
+}

@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#EADDFF">
+    <title>知识库 - RAG系统</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="styles/admin.css">
+    <script src="vue.global.js"></script>
+    <script src="marked.min.js"></script>
+    <script src="purify.min.js"></script>
+    <script>
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark-mode');
+            document.addEventListener('DOMContentLoaded', () => {
+                document.body.classList.add('dark-mode');
+            });
+        }
+    </script>
+    <style>
+        /* RAG页面特有样式 */
+        .rag-layout {
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .kb-sidebar {
+            width: 280px;
+            background: var(--md-sys-color-surface-container-low);
+            border-right: 1px solid var(--md-sys-color-outline-variant);
+            display: flex;
+            flex-direction: column;
+            transition: width var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-standard);
+        }
+
+        .kb-sidebar.collapsed {
+            width: 72px;
+        }
+
+        .kb-sidebar-header {
+            padding: var(--md-sys-spacing-lg);
+            border-bottom: 1px solid var(--md-sys-color-outline-variant);
+        }
+
+        .kb-sidebar-title {
+            font-size: var(--md-sys-typescale-title-medium-size);
+            font-weight: var(--md-sys-typescale-title-medium-weight);
+            color: var(--md-sys-color-on-surface);
+            margin: 0 0 var(--md-sys-spacing-sm) 0;
+        }
+
+        .kb-sidebar-subtitle {
+            font-size: var(--md-sys-typescale-body-small-size);
+            color: var(--md-sys-color-on-surface-variant);
+        }
+
+        .kb-create-btn {
+            margin: var(--md-sys-spacing-md) var(--md-sys-spacing-lg);
+        }
+
+        .kb-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: var(--md-sys-spacing-sm);
+        }
+
+        .kb-item {
+            display: flex;
+            align-items: center;
+            gap: var(--md-sys-spacing-md);
+            padding: var(--md-sys-spacing-md);
+            border-radius: var(--md-sys-shape-corner-medium);
+            cursor: pointer;
+            transition: background-color var(--md-sys-motion-duration-short2);
+            margin-bottom: var(--md-sys-spacing-xs);
+        }
+
+        .kb-item:hover {
+            background: var(--md-sys-color-surface-container-high);
+        }
+
+        .kb-item.active {
+            background: var(--md-sys-color-secondary-container);
+        }
+
+        .kb-item-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: var(--md-sys-shape-corner-small);
+            background: var(--md-sys-color-primary-container);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--md-sys-color-on-primary-container);
+            flex-shrink: 0;
+        }
+
+        .kb-item.active .kb-item-icon {
+            background: var(--md-sys-color-secondary);
+            color: var(--md-sys-color-on-secondary);
+        }
+
+        .kb-item-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .kb-item-name {
+            font-size: var(--md-sys-typescale-body-medium-size);
+            font-weight: 500;
+            color: var(--md-sys-color-on-surface);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .kb-item-meta {
+            font-size: var(--md-sys-typescale-body-small-size);
+            color: var(--md-sys-color-on-surface-variant);
+        }
+
+        .kb-item-actions {
+            display: flex;
+            gap: var(--md-sys-spacing-xs);
+            opacity: 0;
+            transition: opacity var(--md-sys-motion-duration-short2);
+        }
+
+        .kb-item:hover .kb-item-actions {
+            opacity: 1;
+        }
+
+        .kb-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: var(--md-sys-color-background);
+        }
+
+        .kb-empty-state {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: var(--md-sys-spacing-3xl);
+            text-align: center;
+        }
+
+        .kb-empty-icon {
+            width: 120px;
+            height: 120px;
+            border-radius: var(--md-sys-shape-corner-extra-large);
+            background: var(--md-sys-color-surface-container-high);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--md-sys-color-on-surface-variant);
+            margin-bottom: var(--md-sys-spacing-xl);
+        }
+
+        .kb-empty-title {
+            font-size: var(--md-sys-typescale-headline-small-size);
+            font-weight: var(--md-sys-typescale-headline-small-weight);
+            color: var(--md-sys-color-on-surface);
+            margin: 0 0 var(--md-sys-spacing-sm) 0;
+        }
+
+        .kb-empty-desc {
+            font-size: var(--md-sys-typescale-body-medium-size);
+            color: var(--md-sys-color-on-surface-variant);
+            max-width: 400px;
+        }
+
+        /* 知识库详情区域 */
+        .kb-detail {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .kb-detail-header {
+            padding: var(--md-sys-spacing-lg) var(--md-sys-spacing-xl);
+            border-bottom: 1px solid var(--md-sys-color-outline-variant);
+            background: var(--md-sys-color-surface);
+        }
+
+        .kb-detail-title {
+            display: flex;
+            align-items: center;
+            gap: var(--md-sys-spacing-md);
+            margin-bottom: var(--md-sys-spacing-md);
+        }
+
+        .kb-detail-title h2 {
+            font-size: var(--md-sys-typescale-headline-small-size);
+            font-weight: var(--md-sys-typescale-headline-small-weight);
+            color: var(--md-sys-color-on-surface);
+            margin: 0;
+        }
+
+        .kb-detail-tabs {
+            display: flex;
+            gap: var(--md-sys-spacing-xs);
+        }
+
+        .kb-tab {
+            padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-lg);
+            border-radius: var(--md-sys-shape-corner-full);
+            font-size: var(--md-sys-typescale-label-large-size);
+            font-weight: var(--md-sys-typescale-label-large-weight);
+            color: var(--md-sys-color-on-surface-variant);
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            transition: all var(--md-sys-motion-duration-short2);
+        }
+
+        .kb-tab:hover {
+            background: var(--md-sys-color-surface-container-high);
+        }
+
+        .kb-tab.active {
+            background: var(--md-sys-color-secondary-container);
+            color: var(--md-sys-color-on-secondary-container);
+        }
+
+        .kb-detail-content {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+        }
+
+        /* 文档管理区域 */
+        .kb-documents {
+            flex: 1;
+            padding: var(--md-sys-spacing-lg);
+            overflow-y: auto;
+        }
+
+        .kb-doc-actions {
+            display: flex;
+            gap: var(--md-sys-spacing-md);
+            margin-bottom: var(--md-sys-spacing-lg);
+        }
+
+        .kb-doc-list {
+            display: grid;
+            gap: var(--md-sys-spacing-md);
+        }
+
+        .kb-doc-item {
+            display: flex;
+            align-items: center;
+            gap: var(--md-sys-spacing-md);
+            padding: var(--md-sys-spacing-md);
+            background: var(--md-sys-color-surface-container-low);
+            border-radius: var(--md-sys-shape-corner-medium);
+            border: 1px solid var(--md-sys-color-outline-variant);
+        }
+
+        .kb-doc-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: var(--md-sys-shape-corner-small);
+            background: var(--md-sys-color-tertiary-container);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--md-sys-color-on-tertiary-container);
+        }
+
+        .kb-doc-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .kb-doc-name {
+            font-size: var(--md-sys-typescale-body-medium-size);
+            font-weight: 500;
+            color: var(--md-sys-color-on-surface);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .kb-doc-meta {
+            font-size: var(--md-sys-typescale-body-small-size);
+            color: var(--md-sys-color-on-surface-variant);
+            display: flex;
+            gap: var(--md-sys-spacing-md);
+            margin-top: var(--md-sys-spacing-xs);
+        }
+
+        .kb-doc-status {
+            display: flex;
+            align-items: center;
+            gap: var(--md-sys-spacing-xs);
+        }
+
+        .kb-status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .kb-status-dot.ready {
+            background: var(--md-sys-color-success);
+        }
+
+        .kb-status-dot.processing {
+            background: var(--md-sys-color-tertiary);
+            animation: pulse 1.5s infinite;
+        }
+
+        .kb-status-dot.error {
+            background: var(--md-sys-color-error);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* 对话区域 */
+        .kb-chat {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .kb-chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: var(--md-sys-spacing-lg);
+        }
+
+        .kb-message {
+            display: flex;
+            gap: var(--md-sys-spacing-md);
+            margin-bottom: var(--md-sys-spacing-lg);
+            max-width: 85%;
+        }
+
+        .kb-message.user {
+            margin-left: auto;
+            flex-direction: row-reverse;
+        }
+
+        .kb-message-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .kb-message.user .kb-message-avatar {
+            background: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+        }
+
+        .kb-message.assistant .kb-message-avatar {
+            background: var(--md-sys-color-secondary-container);
+            color: var(--md-sys-color-on-secondary-container);
+        }
+
+        .kb-message-content {
+            background: var(--md-sys-color-surface-container-high);
+            padding: var(--md-sys-spacing-md) var(--md-sys-spacing-lg);
+            border-radius: var(--md-sys-shape-corner-large);
+            color: var(--md-sys-color-on-surface);
+            font-size: var(--md-sys-typescale-body-medium-size);
+            line-height: 1.6;
+        }
+
+        .kb-message.user .kb-message-content {
+            background: var(--md-sys-color-primary-container);
+            color: var(--md-sys-color-on-primary-container);
+        }
+
+        .kb-message-content pre {
+            background: var(--md-sys-color-surface-container);
+            padding: var(--md-sys-spacing-md);
+            border-radius: var(--md-sys-shape-corner-small);
+            overflow-x: auto;
+            margin: var(--md-sys-spacing-sm) 0;
+        }
+
+        .kb-message-content code {
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+        }
+
+        .kb-message-content p {
+            margin: 0 0 var(--md-sys-spacing-sm) 0;
+        }
+
+        .kb-message-content p:last-child {
+            margin-bottom: 0;
+        }
+
+        /* 引用来源 */
+        .kb-citations {
+            margin-top: var(--md-sys-spacing-md);
+            padding-top: var(--md-sys-spacing-md);
+            border-top: 1px solid var(--md-sys-color-outline-variant);
+        }
+
+        .kb-citations-title {
+            font-size: var(--md-sys-typescale-label-medium-size);
+            font-weight: 500;
+            color: var(--md-sys-color-on-surface-variant);
+            margin-bottom: var(--md-sys-spacing-sm);
+        }
+
+        .kb-citation-item {
+            display: flex;
+            align-items: flex-start;
+            gap: var(--md-sys-spacing-sm);
+            padding: var(--md-sys-spacing-sm);
+            background: var(--md-sys-color-surface-container);
+            border-radius: var(--md-sys-shape-corner-small);
+            margin-bottom: var(--md-sys-spacing-xs);
+            font-size: var(--md-sys-typescale-body-small-size);
+        }
+
+        .kb-citation-index {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 500;
+            flex-shrink: 0;
+        }
+
+        .kb-citation-text {
+            color: var(--md-sys-color-on-surface-variant);
+            line-height: 1.5;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        /* 输入区域 */
+        .kb-chat-input {
+            padding: var(--md-sys-spacing-md) var(--md-sys-spacing-xl);
+            border-top: 1px solid var(--md-sys-color-outline-variant);
+            background: var(--md-sys-color-surface);
+        }
+
+        .kb-input-wrapper {
+            display: flex;
+            gap: var(--md-sys-spacing-md);
+            align-items: flex-end;
+            background: var(--md-sys-color-surface-container-highest);
+            border-radius: var(--md-sys-shape-corner-extra-large);
+            padding: var(--md-sys-spacing-sm) var(--md-sys-spacing-sm) var(--md-sys-spacing-sm) var(--md-sys-spacing-lg);
+            border: 1px solid var(--md-sys-color-outline-variant);
+            transition: border-color var(--md-sys-motion-duration-short2);
+        }
+
+        .kb-input-wrapper:focus-within {
+            border-color: var(--md-sys-color-primary);
+        }
+
+        .kb-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            font-size: var(--md-sys-typescale-body-large-size);
+            color: var(--md-sys-color-on-surface);
+            resize: none;
+            min-height: 24px;
+            max-height: 120px;
+            padding: var(--md-sys-spacing-sm) 0;
+        }
+
+        .kb-input::placeholder {
+            color: var(--md-sys-color-on-surface-variant);
+        }
+
+        .kb-send-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all var(--md-sys-motion-duration-short2);
+            flex-shrink: 0;
+        }
+
+        .kb-send-btn:hover:not(:disabled) {
+            background: var(--md-sys-color-primary-container);
+            color: var(--md-sys-color-on-primary-container);
+        }
+
+        .kb-send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .kb-send-btn .loading-spinner {
+            width: 20px;
+            height: 20px;
+        }
+
+        /* 设置区域 */
+        .kb-settings {
+            padding: var(--md-sys-spacing-lg);
+            max-width: 600px;
+        }
+
+        .kb-settings-section {
+            margin-bottom: var(--md-sys-spacing-xl);
+        }
+
+        .kb-settings-section h3 {
+            font-size: var(--md-sys-typescale-title-medium-size);
+            font-weight: var(--md-sys-typescale-title-medium-weight);
+            color: var(--md-sys-color-on-surface);
+            margin: 0 0 var(--md-sys-spacing-md) 0;
+        }
+
+        /* 响应式 */
+        @media (max-width: 768px) {
+            .kb-sidebar {
+                position: fixed;
+                left: 0;
+                top: 0;
+                bottom: 0;
+                z-index: 100;
+                transform: translateX(-100%);
+            }
+
+            .kb-sidebar.open {
+                transform: translateX(0);
+            }
+
+            .kb-sidebar-backdrop {
+                position: fixed;
+                inset: 0;
+                background: var(--md-sys-color-scrim);
+                opacity: 0.5;
+                z-index: 99;
+            }
+
+            .kb-message {
+                max-width: 95%;
+            }
+        }
+
+        /* 流式输出光标 */
+        .kb-streaming-cursor {
+            display: inline-block;
+            width: 2px;
+            height: 1.2em;
+            background: var(--md-sys-color-primary);
+            margin-left: 2px;
+            animation: blink 1s infinite;
+            vertical-align: middle;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+
+        /* 上传拖拽区域 */
+        .kb-upload-zone {
+            border: 2px dashed var(--md-sys-color-outline);
+            border-radius: var(--md-sys-shape-corner-large);
+            padding: var(--md-sys-spacing-3xl);
+            text-align: center;
+            transition: all var(--md-sys-motion-duration-short2);
+            cursor: pointer;
+        }
+
+        .kb-upload-zone:hover,
+        .kb-upload-zone.drag-over {
+            border-color: var(--md-sys-color-primary);
+            background: var(--md-sys-color-primary-container);
+        }
+
+        .kb-upload-zone.uploading {
+            border-color: var(--md-sys-color-tertiary);
+            background: var(--md-sys-color-tertiary-container);
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- 通知提示 -->
+        <div v-if="notification" :class="['notification', notification.type]" role="alert" aria-live="polite">
+            {{ notification.message }}
+        </div>
+
+        <!-- 确认弹窗 -->
+        <transition name="modal-fade">
+            <div v-if="confirmModal.show" class="modal" @click="confirmModal.onConfirm(false)">
+                <div class="modal-content" @click.stop>
+                    <h3>{{ confirmModal.title }}</h3>
+                    <p>{{ confirmModal.message }}</p>
+                    <div class="modal-buttons">
+                        <button @click="confirmModal.onConfirm(false)" class="btn btn-secondary">取消</button>
+                        <button @click="confirmModal.onConfirm(true)" class="btn btn-primary">确认</button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+        <!-- 创建知识库弹窗 -->
+        <transition name="modal-fade">
+            <div v-if="showCreateModal" class="modal" @click.self="showCreateModal = false">
+                <div class="modal-content">
+                    <h3>{{ editingKb ? '编辑知识库' : '创建知识库' }}</h3>
+                    <div class="form-group">
+                        <label>知识库名称</label>
+                        <input type="text" v-model="kbForm.name" placeholder="请输入知识库名称" maxlength="50">
+                    </div>
+                    <div class="form-group">
+                        <label>描述（可选）</label>
+                        <textarea v-model="kbForm.description" placeholder="请输入知识库描述" rows="3" maxlength="200"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>嵌入模型</label>
+                        <md3-select
+                            v-model="kbForm.embedding_model"
+                            :options="embeddingModels"
+                            option-label="label"
+                            option-value="value"
+                            placeholder="选择嵌入模型"
+                        ></md3-select>
+                    </div>
+                    <div class="modal-buttons">
+                        <button @click="showCreateModal = false" class="btn btn-secondary">取消</button>
+                        <button @click="saveKnowledgeBase" class="btn btn-primary" :disabled="!kbForm.name.trim() || saving">
+                            <span v-if="saving" class="loading-spinner-small">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10" stroke-dasharray="60" stroke-dashoffset="15">
+                                        <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite"/>
+                                    </circle>
+                                </svg>
+                            </span>
+                            <span v-else>保存</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+        <!-- 上传文档弹窗 -->
+        <transition name="modal-fade">
+            <div v-if="showUploadModal" class="modal" @click.self="closeUploadModal">
+                <div class="modal-content upload-modal">
+                    <h3>上传文档</h3>
+                    <p class="modal-description">支持 PDF、TXT、MD、DOCX 格式</p>
+                    
+                    <div 
+                        class="kb-upload-zone" 
+                        :class="{ 'drag-over': isDragOver, 'uploading': uploadProgress > 0 }"
+                        @dragover.prevent="handleDragOver"
+                        @dragenter.prevent="handleDragEnter"
+                        @dragleave.prevent="handleDragLeave"
+                        @drop.prevent="handleFileDrop"
+                        @click="triggerFileInput"
+                    >
+                        <input 
+                            ref="fileInput"
+                            type="file" 
+                            accept=".pdf,.txt,.md,.docx" 
+                            @change="handleFileSelect"
+                            style="display: none"
+                            multiple
+                        >
+                        <div v-if="uploadProgress === 0" class="upload-placeholder">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="17 8 12 3 7 8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                            <p v-if="selectedFiles.length === 0">拖拽文件到此处或点击选择</p>
+                            <div v-else class="selected-files">
+                                <p v-for="file in selectedFiles" :key="file.name" class="selected-file">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                        <polyline points="14 2 14 8 20 8"/>
+                                    </svg>
+                                    {{ file.name }}
+                                </p>
+                            </div>
+                        </div>
+                        <div v-else class="upload-progress-inline">
+                            <div class="progress-track-inline">
+                                <div class="progress-bar-fill" :style="{ width: uploadProgress + '%' }"></div>
+                            </div>
+                            <span class="progress-text">上传中... {{ uploadProgress }}%</span>
+                        </div>
+                    </div>
+                    <div class="modal-buttons">
+                        <button @click="closeUploadModal" class="btn btn-secondary" :disabled="uploadProgress > 0">取消</button>
+                        <button @click="handleUpload" class="btn btn-primary" :disabled="selectedFiles.length === 0 || uploadProgress > 0">
+                            确认上传
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+        <!-- 登录检查 -->
+        <div v-if="!isLoggedIn" class="container login-container">
+            <div class="login-card">
+                <div class="login-card-header">
+                    <div class="login-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                        </svg>
+                    </div>
+                    <h1>请先登录</h1>
+                    <p class="login-subtitle">登录后即可使用知识库功能</p>
+                </div>
+                <div class="login-form">
+                    <a href="/" class="btn btn-filled btn-block">前往登录</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主界面 -->
+        <div v-else class="rag-layout">
+            <!-- 移动端遮罩 -->
+            <div v-if="sidebarOpen && isMobile" class="kb-sidebar-backdrop" @click="sidebarOpen = false"></div>
+
+            <!-- 侧边栏：知识库列表 -->
+            <aside :class="['kb-sidebar', { open: sidebarOpen && isMobile, collapsed: !sidebarOpen && !isMobile }]">
+                <div class="kb-sidebar-header">
+                    <h3 class="kb-sidebar-title">知识库</h3>
+                    <p class="kb-sidebar-subtitle">{{ kbList.length }} 个知识库</p>
+                </div>
+
+                <button @click="openCreateModal" class="btn btn-filled kb-create-btn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"/>
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                    新建知识库
+                </button>
+
+                <div class="kb-list">
+                    <div 
+                        v-for="kb in kbList" 
+                        :key="kb.id"
+                        :class="['kb-item', { active: currentKb && currentKb.id === kb.id }]"
+                        @click="selectKnowledgeBase(kb)"
+                    >
+                        <div class="kb-item-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                            </svg>
+                        </div>
+                        <div class="kb-item-info">
+                            <div class="kb-item-name">{{ kb.name }}</div>
+                            <div class="kb-item-meta">{{ kb.document_count || 0 }} 文档</div>
+                        </div>
+                        <div class="kb-item-actions" @click.stop>
+                            <button @click="editKnowledgeBase(kb)" class="btn icon-btn-small" title="编辑">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                </svg>
+                            </button>
+                            <button @click="confirmDeleteKb(kb)" class="btn icon-btn-small" title="删除">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="drawer-footer">
+                    <a href="/" class="btn btn-text btn-block">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                            <polyline points="9 22 9 12 15 12 15 22"/>
+                        </svg>
+                        返回首页
+                    </a>
+                </div>
+            </aside>
+
+            <!-- 主内容区 -->
+            <main class="kb-main">
+                <!-- 顶部栏 -->
+                <header class="top-app-bar">
+                    <button @click="toggleSidebar" class="btn icon-btn menu-btn" aria-label="切换侧边栏">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="3" y1="12" x2="21" y2="12"/>
+                            <line x1="3" y1="6" x2="21" y2="6"/>
+                            <line x1="3" y1="18" x2="21" y2="18"/>
+                        </svg>
+                    </button>
+                    <div class="top-bar-title">
+                        <h1>{{ currentKb ? currentKb.name : '知识库' }}</h1>
+                        <p class="top-bar-subtitle">{{ currentKb ? currentKb.description || '基于文档的智能问答' : '请选择或创建一个知识库' }}</p>
+                    </div>
+                    <div class="top-bar-actions">
+                        <button @click="toggleDarkMode" class="btn icon-btn" :aria-label="isDarkMode ? '切换到亮色模式' : '切换到暗色模式'">
+                            <svg v-if="!isDarkMode" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                            </svg>
+                            <svg v-else width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="5"/>
+                                <line x1="12" y1="1" x2="12" y2="3"/>
+                                <line x1="12" y1="21" x2="12" y2="23"/>
+                                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                                <line x1="1" y1="12" x2="3" y2="12"/>
+                                <line x1="21" y1="12" x2="23" y2="12"/>
+                                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                            </svg>
+                        </button>
+                    </div>
+                </header>
+
+                <!-- 空状态 -->
+                <div v-if="!currentKb" class="kb-empty-state">
+                    <div class="kb-empty-icon">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                        </svg>
+                    </div>
+                    <h3 class="kb-empty-title">欢迎使用知识库</h3>
+                    <p class="kb-empty-desc">创建知识库并上传文档，即可开始基于文档内容的智能问答。支持 PDF、TXT、Markdown 等多种格式。</p>
+                    <button @click="openCreateModal" class="btn btn-filled">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19"/>
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                        创建第一个知识库
+                    </button>
+                </div>
+
+                <!-- 知识库详情 -->
+                <div v-else class="kb-detail">
+                    <!-- 标签页 -->
+                    <div class="kb-detail-header">
+                        <div class="kb-detail-tabs">
+                            <button 
+                                :class="['kb-tab', { active: activeTab === 'chat' }]"
+                                @click="activeTab = 'chat'"
+                            >
+                                对话
+                            </button>
+                            <button 
+                                :class="['kb-tab', { active: activeTab === 'documents' }]"
+                                @click="activeTab = 'documents'"
+                            >
+                                文档
+                            </button>
+                            <button 
+                                :class="['kb-tab', { active: activeTab === 'settings' }]"
+                                @click="activeTab = 'settings'"
+                            >
+                                设置
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 内容区 -->
+                    <div class="kb-detail-content">
+                        <!-- 对话界面 -->
+                        <div v-if="activeTab === 'chat'" class="kb-chat">
+                            <div class="kb-chat-messages" ref="chatMessages">
+                                <div v-if="messages.length === 0" class="kb-empty-state" style="flex: none; padding: var(--md-sys-spacing-2xl);">
+                                    <div class="kb-empty-icon" style="width: 80px; height: 80px;">
+                                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                                        </svg>
+                                    </div>
+                                    <h3 class="kb-empty-title" style="font-size: var(--md-sys-typescale-title-large-size);">开始对话</h3>
+                                    <p class="kb-empty-desc">输入您的问题，AI将基于知识库内容为您解答</p>
+                                </div>
+
+                                <template v-else>
+                                    <div 
+                                        v-for="(msg, index) in messages" 
+                                        :key="index"
+                                        :class="['kb-message', msg.role]"
+                                    >
+                                        <div class="kb-message-avatar">
+                                            <svg v-if="msg.role === 'user'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                                                <circle cx="12" cy="7" r="4"/>
+                                            </svg>
+                                            <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                                                <line x1="8" y1="21" x2="16" y2="21"/>
+                                                <line x1="12" y1="17" x2="12" y2="21"/>
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <div class="kb-message-content" v-html="renderMarkdown(msg.content)"></div>
+                                            
+                                            <!-- 引用来源 -->
+                                            <div v-if="msg.citations && msg.citations.length > 0" class="kb-citations">
+                                                <div class="kb-citations-title">引用来源</div>
+                                                <div 
+                                                    v-for="(citation, cidx) in msg.citations" 
+                                                    :key="cidx"
+                                                    class="kb-citation-item"
+                                                >
+                                                    <span class="kb-citation-index">{{ cidx + 1 }}</span>
+                                                    <span class="kb-citation-text">{{ citation.text }}</span>
+                                                </div>
+                                            </div>
+
+                                            <!-- 流式输出光标 -->
+                                            <span v-if="msg.isStreaming" class="kb-streaming-cursor"></span>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <div class="kb-chat-input">
+                                <div class="kb-input-wrapper">
+                                    <textarea 
+                                        v-model="inputMessage"
+                                        class="kb-input"
+                                        placeholder="输入您的问题..."
+                                        rows="1"
+                                        @keydown.enter.prevent="sendMessage"
+                                        @input="autoResize"
+                                        ref="inputArea"
+                                    ></textarea>
+                                    <button 
+                                        @click="sendMessage" 
+                                        class="kb-send-btn"
+                                        :disabled="!inputMessage.trim() || isStreaming"
+                                    >
+                                        <svg v-if="!isStreaming" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <line x1="22" y1="2" x2="11" y2="13"/>
+                                            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                                        </svg>
+                                        <div v-else class="loading-spinner">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <circle cx="12" cy="12" r="10" stroke-dasharray="60" stroke-dashoffset="15">
+                                                    <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite"/>
+                                                </circle>
+                                            </svg>
+                                        </div>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 文档管理 -->
+                        <div v-if="activeTab === 'documents'" class="kb-documents">
+                            <div class="kb-doc-actions">
+                                <button @click="showUploadModal = true" class="btn btn-filled">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                        <polyline points="17 8 12 3 7 8"/>
+                                        <line x1="12" y1="3" x2="12" y2="15"/>
+                                    </svg>
+                                    上传文档
+                                </button>
+                                <button @click="loadDocuments" class="btn btn-tonal">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <polyline points="23 4 23 10 17 10"/>
+                                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                                    </svg>
+                                    刷新
+                                </button>
+                            </div>
+
+                            <div v-if="documents.length === 0" class="kb-empty-state" style="padding: var(--md-sys-spacing-2xl);">
+                                <div class="kb-empty-icon" style="width: 80px; height: 80px;">
+                                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                        <polyline points="14 2 14 8 20 8"/>
+                                    </svg>
+                                </div>
+                                <h3 class="kb-empty-title" style="font-size: var(--md-sys-typescale-title-large-size);">暂无文档</h3>
+                                <p class="kb-empty-desc">上传文档到知识库，AI将基于文档内容回答您的问题</p>
+                            </div>
+
+                            <div v-else class="kb-doc-list">
+                                <div v-for="doc in documents" :key="doc.id" class="kb-doc-item">
+                                    <div class="kb-doc-icon">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                            <polyline points="14 2 14 8 20 8"/>
+                                        </svg>
+                                    </div>
+                                    <div class="kb-doc-info">
+                                        <div class="kb-doc-name">{{ doc.filename }}</div>
+                                        <div class="kb-doc-meta">
+                                            <span>{{ formatFileSize(doc.file_size) }}</span>
+                                            <span class="kb-doc-status">
+                                                <span :class="['kb-status-dot', doc.status]"></span>
+                                                {{ getStatusText(doc.status) }}
+                                            </span>
+                                            <span>{{ formatTime(doc.created_at) }}</span>
+                                        </div>
+                                    </div>
+                                    <button @click="confirmDeleteDoc(doc)" class="btn icon-btn-small" title="删除">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <polyline points="3 6 5 6 21 6"/>
+                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 设置 -->
+                        <div v-if="activeTab === 'settings'" class="kb-settings">
+                            <div class="kb-settings-section">
+                                <h3>基本信息</h3>
+                                <div class="form-group">
+                                    <label>知识库名称</label>
+                                    <input type="text" v-model="currentKb.name" disabled>
+                                </div>
+                                <div class="form-group">
+                                    <label>描述</label>
+                                    <textarea v-model="currentKb.description" rows="3" disabled></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label>嵌入模型</label>
+                                    <input type="text" :value="currentKb.embedding_model" disabled>
+                                </div>
+                            </div>
+
+                            <div class="kb-settings-section">
+                                <h3>统计信息</h3>
+                                <div class="stats-bar">
+                                    <div class="stat-item">
+                                        <div class="stat-content">
+                                            <span class="stat-value">{{ currentKb.document_count || 0 }}</span>
+                                            <span class="stat-label">文档数</span>
+                                        </div>
+                                    </div>
+                                    <div class="stat-item">
+                                        <div class="stat-content">
+                                            <span class="stat-value">{{ currentKb.chunk_count || 0 }}</span>
+                                            <span class="stat-label">文本块</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="kb-settings-section">
+                                <h3>危险操作</h3>
+                                <button @click="confirmDeleteKb(currentKb)" class="btn btn-danger">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <polyline points="3 6 5 6 21 6"/>
+                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                    </svg>
+                                    删除知识库
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="components/common/Md3Select.js"></script>
+    <script src="utils/api.js"></script>
+    <script src="utils/auth.js"></script>
+    <script src="rag.js"></script>
+</body>
+</html>
